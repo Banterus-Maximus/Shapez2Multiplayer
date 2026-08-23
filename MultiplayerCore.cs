@@ -14,7 +14,7 @@ namespace Shapez2Multiplayer
 {
     public static class MultiplayerCore
     {
-        public const string NetworkCompatibleModVersion = "1.2.0-local.6";
+        public const string NetworkCompatibleModVersion = "1.2.0-local.7";
         public const int NetworkProtocolVersion = 7;
         public static ShapezSocketManager? socketManager;
         public static ShapezConnectionManager? connectionManager;
@@ -263,7 +263,6 @@ namespace Shapez2Multiplayer
                         sm.Close();
                     }
                     HUDMultiplayerPausePanel.instance.ClearPlayers();
-                    HUDMultiplayerJumpPanel.Instance?.ClearPlayers();
                     socketManager = null;
                 }
                 bool wasClient = Client;
@@ -350,6 +349,7 @@ namespace Shapez2Multiplayer
             //ChunkedPacket.Update();
             socketManager?.Update();
             connectionManager?.Update();
+            MultiplayerSynchronization.MonitorClientPlayerLevel();
         }
     }
 }

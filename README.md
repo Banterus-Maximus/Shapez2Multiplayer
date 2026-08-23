@@ -17,8 +17,9 @@ Client (Direct Connect) - Enter the host's ip in the multiplayer menu and press 
 
 Supports Direct Connect and Steam Networking
 
-While connected, use the always-visible player panel in the upper-right and
-press `JUMP` to center the map on another player's latest cursor position.
+While connected, open the pause menu and press `JUMP` beside a player to center
+the map on their latest cursor position. The queued jump is retained while the
+menu is open and applied again as gameplay resumes.
 
 Currently does not sync belt, pipe and logic states, however all buildings and research systems are synced so the game should naturally stay mostly synced
 
@@ -62,7 +63,7 @@ ENet libraries compiled from https://github.com/nxrighthere/ENet-CSharp
    The project writes the complete local mod directly to
    `%SPZ2_PERSISTENT%\mods\Shapez2Multiplayer`.
 7. Start shapez 2, open the Mods screen, enable the local
-   Shapez2Multiplayer v1.2.0-local.6 entry and its dependencies, then restart
+   Shapez2Multiplayer v1.2.0-local.7 entry and its dependencies, then restart
    when prompted. Repeat the same source/build steps on the other PC, or copy
    the completed `%SPZ2_PERSISTENT%\mods\Shapez2Multiplayer` folder to the same
    location on that PC.

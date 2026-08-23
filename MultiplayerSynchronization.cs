@@ -1,4 +1,5 @@
-﻿using Game.HUD.QuestArea.PinnedShapes;
+﻿using Game.Core.Research;
+using Game.HUD.QuestArea.PinnedShapes;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -20,6 +21,8 @@ namespace Shapez2Multiplayer
         public static bool ApplyingAuthoritativeResearchState { get; set; }
         private static readonly HashSet<string> PendingJobRequests = new HashSet<string>();
         private static readonly HashSet<int> PendingPlayerLevelRequests = new HashSet<int>();
+        private static bool HasAuthoritativePlayerLevel;
+        private static int AuthoritativePlayerLevel;
 
         public static void ResetClientState()
         {
@@ -28,6 +31,8 @@ namespace Shapez2Multiplayer
             ApplyingAuthoritativeResearchState = false;
             PendingJobRequests.Clear();
             PendingPlayerLevelRequests.Clear();
+            HasAuthoritativePlayerLevel = false;
+            AuthoritativePlayerLevel = 0;
             Shapez2Multiplayer.IgnorePinEvents = false;
         }
 
@@ -51,6 +56,89 @@ namespace Shapez2Multiplayer
         public static bool TryBeginPlayerLevelRequest(int expectedLevel)
         {
             return PendingPlayerLevelRequests.Add(expectedLevel);
+        }
+
+        public static void SetAuthoritativePlayerLevel(int level)
+        {
+            AuthoritativePlayerLevel = level;
+            HasAuthoritativePlayerLevel = true;
+        }
+
+        public static void MonitorClientPlayerLevel()
+        {
+            if (!MultiplayerCore.Client ||
+                MultiplayerCore.connectionManager == null ||
+                !MultiplayerCore.connectionManager.FinishedConnecting ||
+                ApplyingAuthoritativeResearchState ||
+                !HasAuthoritativePlayerLevel ||
+                Shapez2Multiplayer.Research == null)
+            {
+                return;
+            }
+
+            var localLevel = Shapez2Multiplayer.Research.PlayerLevel.Level;
+            if (localLevel <= AuthoritativePlayerLevel || !TryBeginPlayerLevelRequest(AuthoritativePlayerLevel))
+            {
+                return;
+            }
+
+            // Some game revisions perform the certification claim outside
+            // GrantPlayerLevel. Detect that mutation as a fallback and ask the
+            // host to perform the same one-level claim authoritatively.
+            Shapez2Multiplayer.logger.Info?.Log($"Detected local operator-level claim {AuthoritativePlayerLevel} -> {localLevel}; requesting host authorization.");
+            MultiplayerCore.connectionManager.Send(new Packets.GrantPlayerLevelPacket(AuthoritativePlayerLevel));
+        }
+
+        public static bool TryForcePlayerLevel(ResearchPlayerLevelManager manager, int targetLevel)
+        {
+            if (targetLevel < 0)
+            {
+                return false;
+            }
+            if (manager.Level == targetLevel)
+            {
+                return true;
+            }
+
+            try
+            {
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                var managerType = manager.GetType();
+                var levelField = managerType.GetField("<Level>k__BackingField", flags) ??
+                    managerType.GetField("_Level", flags) ??
+                    managerType.GetFields(flags).FirstOrDefault(field =>
+                        field.FieldType == typeof(int) &&
+                        string.Equals(field.Name.Trim('_'), "Level", StringComparison.OrdinalIgnoreCase));
+                if (levelField != null)
+                {
+                    levelField.SetValue(manager, targetLevel);
+                }
+                else
+                {
+                    var levelProperty = managerType.GetProperty(nameof(ResearchPlayerLevelManager.Level), flags);
+                    var levelSetter = levelProperty?.GetSetMethod(true);
+                    if (levelSetter == null)
+                    {
+                        return false;
+                    }
+                    levelSetter.Invoke(manager, new object[] { targetLevel });
+                }
+
+                if (manager.Level != targetLevel)
+                {
+                    return false;
+                }
+
+                var changedEvent = managerType.GetField("_OnLevelChanged", flags)?.GetValue(manager);
+                changedEvent?.GetType().GetMethod("Invoke", flags, null, Type.EmptyTypes, null)?.Invoke(changedEvent, null);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Shapez2Multiplayer.logger.Warning?.Log($"Failed to force the authoritative operator level to {targetLevel}.");
+                Shapez2Multiplayer.logger.Warning?.LogException(ex);
+                return false;
+            }
         }
 
         public static bool ShouldApplyPinRevision(ulong revision)

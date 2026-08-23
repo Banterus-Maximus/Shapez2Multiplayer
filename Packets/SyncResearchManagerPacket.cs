@@ -140,9 +140,21 @@ namespace Shapez2Multiplayer.Packets
                     }
                 }
 
-                for (var level = researchManager.PlayerLevel.Level; level < ResearchManagerSerializedData.PlayerLevel.Level; level++)
+                var targetPlayerLevel = ResearchManagerSerializedData.PlayerLevel.Level;
+                for (var level = researchManager.PlayerLevel.Level; level < targetPlayerLevel; level++)
                 {
                     researchManager.PlayerLevel.GrantPlayerLevel();
+                }
+                if (researchManager.PlayerLevel.Level != targetPlayerLevel)
+                {
+                    // GrantPlayerLevel can reject a replay when the updated game
+                    // considers the local certification UI state incomplete. The
+                    // packet is authoritative, so reconcile the serialized model
+                    // directly if the native progression path did not reach it.
+                    if (!MultiplayerSynchronization.TryForcePlayerLevel(researchManager.PlayerLevel, targetPlayerLevel))
+                    {
+                        Shapez2Multiplayer.logger.Warning?.Log($"Could not reconcile operator level {researchManager.PlayerLevel.Level} to host level {targetPlayerLevel}.");
+                    }
                 }
 
                 var levels = researchManager.PlayerLevelGoals.Levels;
@@ -190,6 +202,7 @@ namespace Shapez2Multiplayer.Packets
                 researchManager.PointStorage.TotalSpent = new ResearchPointCurrency(ResearchManagerSerializedData.PointCurrency.TotalSpent);
 
                 MultiplayerSynchronization.MarkResearchRevisionApplied(Revision);
+                MultiplayerSynchronization.SetAuthoritativePlayerLevel(targetPlayerLevel);
             }
             catch (System.Exception ex)
             {

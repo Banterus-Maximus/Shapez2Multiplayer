@@ -75,7 +75,6 @@ namespace Shapez2Multiplayer
         {
             Shapez2Multiplayer.logger.Info?.Log("Client connected: " + connection.UniversalId);
             HUDMultiplayerPausePanel.instance.AddPlayer(connection);
-            HUDMultiplayerJumpPanel.Instance?.AddPlayer(connection);
             ChunkedPacket.ChunkedPacketCache.Add(connection.UniversalId, new Dictionary<uint, ChunkCacheData>());
             PlayersDrawers.Add(connection.UniversalId, Shapez2Multiplayer.CreateOtherPlayerEntityPlacementDrawer());
             PlayersBuildingMassSelections.Add(connection.UniversalId, HUDMultiplayerMassSelectionsHost.Instance.CreateOtherPlayerHUDBuildingMassSelection(connection));
@@ -92,7 +91,6 @@ namespace Shapez2Multiplayer
         {
             Shapez2Multiplayer.logger.Info?.Log("Client disconnected: " + connection.UniversalId);
             HUDMultiplayerPausePanel.instance.RemovePlayer(connection);
-            HUDMultiplayerJumpPanel.Instance?.RemovePlayer(connection);
             ChunkedPacket.ChunkedPacketCache.Remove(connection.UniversalId);
             ChunkedPacket.ToSend.RemoveAll(c => c.Item2 == connection);
             if (ChunkedPacket.WaitingFromId.HasValue && ChunkedPacket.WaitingFromId.Value == connection.UniversalId)

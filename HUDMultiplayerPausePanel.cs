@@ -32,6 +32,7 @@ namespace Shapez2Multiplayer
             instance = this;
             if (MultiplayerCore.Client)
             {
+                AddHostPlayer(MultiplayerCore.connectionManager.ConnectionManager.Connection);
                 foreach (var connection in MultiplayerCore.connectionManager.Connections)
                 {
                     if (connection.UniversalId == MultiplayerCore.connectionManager.UniversalId) continue;
@@ -50,10 +51,20 @@ namespace Shapez2Multiplayer
         public void AddPlayer(IConnection connection)
         {
             if (MultiplayerCore.Client && connection.UniversalId == MultiplayerCore.connectionManager?.UniversalId) return;
-            if (Entries.Any(entry => entry.Connection.UniversalId == connection.UniversalId)) return;
+            if (Entries.Any(entry => !entry.RepresentsHost && entry.Connection.UniversalId == connection.UniversalId)) return;
+            AddPlayerEntry(connection, false);
+        }
+        private void AddHostPlayer(IConnection connection)
+        {
+            if (Entries.Any(entry => entry.RepresentsHost)) return;
+            AddPlayerEntry(connection, true);
+        }
+        private void AddPlayerEntry(IConnection connection, bool representsHost)
+        {
             GameObject PlayerObject = new GameObject(connection.Name);
             HUDPlayerEntry playerEntry = PlayerObject.AddComponent<HUDPlayerEntry>();
             playerEntry.Connection = connection;
+            playerEntry.RepresentsHost = representsHost;
             PlayerObject.transform.SetParent(ScrollRect.content);
             PlayerObject.transform.localScale = Vector3.one;
             PlayerObject.layer = LayerMask.NameToLayer("UI");
@@ -65,7 +76,7 @@ namespace Shapez2Multiplayer
             NameText.fontStyle = FontStyles.Normal;
             RectTransform NameTextRect = NameText.GetComponent<RectTransform>();
             NameTextRect.anchorMin = Vector2.zero;
-            NameTextRect.anchorMax = new Vector2(0.4f, 1);
+            NameTextRect.anchorMax = new Vector2(0.35f, 1);
             NameTextRect.offsetMin = new Vector2(20, 20);
             NameTextRect.offsetMax = new Vector2(-20, -20);
             playerEntry.NameText = NameText;
@@ -76,19 +87,29 @@ namespace Shapez2Multiplayer
             PingText.gameObject.name = "PingText";
             PingText.transform.SetParent(PlayerObject.transform);
             RectTransform PingTextRect = PingText.GetComponent<RectTransform>();
-            PingTextRect.anchorMin = new Vector2(0.4f, 0);
-            PingTextRect.anchorMax = new Vector2(0.6f, 1);
+            PingTextRect.anchorMin = new Vector2(0.35f, 0);
+            PingTextRect.anchorMax = new Vector2(0.5f, 1);
             PingTextRect.offsetMin = new Vector2(20, 20);
             PingTextRect.offsetMax = new Vector2(-20, -20);
             playerEntry.PingText = PingText;
+
+            HUDButton JumpButton = UIFactory.AddButton(PlayerObject.transform, playerEntry, secondary: true);
+            JumpButton.name = "JumpButton";
+            JumpButton.transform.SetParent(PlayerObject.transform);
+            RectTransform JumpButtonRect = JumpButton.GetComponent<RectTransform>();
+            JumpButtonRect.anchorMin = new Vector2(0.5f, 0);
+            JumpButtonRect.anchorMax = new Vector2(0.75f, 1);
+            JumpButtonRect.offsetMin = new Vector2(10, 20);
+            JumpButtonRect.offsetMax = new Vector2(-10, -20);
+            playerEntry.JumpButton = JumpButton;
 
             HUDButton KickButton = UIFactory.AddButton(PlayerObject.transform, playerEntry);
             KickButton.name = "KickButton";
             KickButton.transform.SetParent(PlayerObject.transform);
             RectTransform KickButtonRect = KickButton.GetComponent<RectTransform>();
-            KickButtonRect.anchorMin = new Vector2(0.6f, 0);
+            KickButtonRect.anchorMin = new Vector2(0.75f, 0);
             KickButtonRect.anchorMax = Vector2.one;
-            KickButtonRect.offsetMin = new Vector2(20, 20);
+            KickButtonRect.offsetMin = new Vector2(10, 20);
             KickButtonRect.offsetMax = new Vector2(-20, -20);
             playerEntry.KickButton = KickButton;
             this.GetDependencyResolver().Inject(playerEntry);

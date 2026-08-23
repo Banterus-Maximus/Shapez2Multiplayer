@@ -648,29 +648,6 @@ namespace Shapez2Multiplayer
             ___DependencyContainer.Inject(hudMultiplayerCursors);
             ___Parts.Add(hudMultiplayerCursors);
 
-            GameObject hudMultiplayerJumpPanelGameObject = new GameObject("HUDMultiplayerJumpPanel", typeof(RectTransform));
-            hudMultiplayerJumpPanelGameObject.transform.SetParent(___Root, false);
-            hudMultiplayerJumpPanelGameObject.transform.SetAsLastSibling();
-            hudMultiplayerJumpPanelGameObject.layer = LayerMask.NameToLayer("UI");
-            var jumpPanelRect = hudMultiplayerJumpPanelGameObject.GetComponent<RectTransform>();
-            jumpPanelRect.anchorMin = Vector2.one;
-            jumpPanelRect.anchorMax = Vector2.one;
-            jumpPanelRect.pivot = Vector2.one;
-            jumpPanelRect.anchoredPosition = new Vector2(-24f, -170f);
-            jumpPanelRect.sizeDelta = new Vector2(300f, 0f);
-            var jumpPanelLayout = hudMultiplayerJumpPanelGameObject.AddComponent<VerticalLayoutGroup>();
-            jumpPanelLayout.spacing = 8f;
-            jumpPanelLayout.childAlignment = TextAnchor.UpperRight;
-            jumpPanelLayout.childControlWidth = true;
-            jumpPanelLayout.childControlHeight = true;
-            jumpPanelLayout.childForceExpandWidth = false;
-            jumpPanelLayout.childForceExpandHeight = false;
-            var jumpPanelFitter = hudMultiplayerJumpPanelGameObject.AddComponent<ContentSizeFitter>();
-            jumpPanelFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
-            jumpPanelFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            var hudMultiplayerJumpPanel = hudMultiplayerJumpPanelGameObject.AddComponent<HUDMultiplayerJumpPanel>();
-            ___DependencyContainer.Inject(hudMultiplayerJumpPanel);
-            ___Parts.Add(hudMultiplayerJumpPanel);
         }
         [HarmonyPatch(typeof(HUD), nameof(HUD.Dispose))]
         [HarmonyPrefix]
@@ -679,7 +656,7 @@ namespace Shapez2Multiplayer
             List<HUDPart> toRemove = new List<HUDPart>();
             foreach (HUDPart part in ___Parts)
             {
-                if (part is HUDMultiplayerMassSelectionsHost || part is HUDMultiplayerCursors || part is HUDMultiplayerJumpPanel)
+                if (part is HUDMultiplayerMassSelectionsHost || part is HUDMultiplayerCursors)
                 {
                     part.Dispose();
                     toRemove.Add(part);
