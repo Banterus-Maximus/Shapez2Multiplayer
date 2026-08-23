@@ -40,7 +40,10 @@ namespace Shapez2Multiplayer.Packets
             for (var index = 0; index < count; index++)
             {
                 var shapeKey = reader.ReadString();
-                var amount = reader.ReadInt32();
+                // StoredShapes changed from int to long in the current game.
+                // Encode already writes the runtime long value; reading only four
+                // bytes here misaligns every following key and rejects the packet.
+                var amount = reader.ReadInt64();
                 Shapes.StoredShapes[shapeKey] = amount;
             }
         }

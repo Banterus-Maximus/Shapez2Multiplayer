@@ -44,9 +44,11 @@ namespace Shapez2Multiplayer
             ENet.Packet packet = new ENet.Packet();
             var reliable = PacketDelivery.IsReliable(type);
             packet.Create(compressed, reliable ? PacketFlags.Reliable : PacketFlags.None);
-            // Keep high-rate/replaceable traffic off the ordered gameplay channel
-            // so it cannot delay construction, claims, or configuration changes.
-            return Peer.Send(reliable ? (byte)0 : (byte)1, ref packet);
+            // Channel 0 is reliable gameplay, channel 1 is replaceable snapshots,
+            // and channel 2 is cursor/preview traffic. Vortex snapshots can be
+            // reliable on channel 1 without blocking construction or claims.
+            var channel = PacketDelivery.IsReplaceableSnapshot(type) ? (byte)1 : reliable ? (byte)0 : (byte)2;
+            return Peer.Send(channel, ref packet);
         }
 
         public static implicit operator Peer(ENetConnection connection) => connection.Peer;
