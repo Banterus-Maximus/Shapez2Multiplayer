@@ -40,6 +40,7 @@ namespace Shapez2Multiplayer
         private const float RepairRequestCooldown = 2.0f;
         private static int ConsecutiveWorldDigestMismatches;
         private static bool WorldMismatchNotificationShown;
+        private static float NextWatchdogCheckTime;
 
         public static void ResetClientState()
         {
@@ -64,6 +65,7 @@ namespace Shapez2Multiplayer
             PendingActionCommands.Clear();
             ConsecutiveWorldDigestMismatches = 0;
             WorldMismatchNotificationShown = false;
+            NextWatchdogCheckTime = now;
             Shapez2Multiplayer.IgnorePinEvents = false;
         }
 
@@ -216,12 +218,17 @@ namespace Shapez2Multiplayer
             }
 
             var now = Time.realtimeSinceStartup;
+            if (now < NextWatchdogCheckTime)
+            {
+                return;
+            }
+            NextWatchdogCheckTime = now + 1.0f;
             var stale = SyncSubsystem.None;
-            if (now - LastResearchSnapshotTime > 5.0f) stale |= SyncSubsystem.Research;
-            if (now - LastVortexSnapshotTime > 3.0f) stale |= SyncSubsystem.Vortex;
-            if (now - LastPinSnapshotTime > 15.0f) stale |= SyncSubsystem.Pins;
-            if (now - LastWaypointSnapshotTime > 15.0f) stale |= SyncSubsystem.Waypoints;
-            if (now - LastWorldDigestTime > 12.0f) stale |= SyncSubsystem.WorldDigest;
+            if (now - LastResearchSnapshotTime > 8.0f) stale |= SyncSubsystem.Research;
+            if (now - LastVortexSnapshotTime > 6.0f) stale |= SyncSubsystem.Vortex;
+            if (now - LastPinSnapshotTime > 45.0f) stale |= SyncSubsystem.Pins;
+            if (now - LastWaypointSnapshotTime > 45.0f) stale |= SyncSubsystem.Waypoints;
+            if (now - LastWorldDigestTime > 45.0f) stale |= SyncSubsystem.WorldDigest;
             if (stale != SyncSubsystem.None)
             {
                 RequestRepair(stale, "snapshot watchdog timeout");
@@ -282,33 +289,15 @@ namespace Shapez2Multiplayer
 
         public static void ComputeWorldDigest(out int buildingCount, out ulong digest)
         {
-            buildingCount = 0;
-            digest = 14695981039346656037UL;
             var map = Shapez2Multiplayer.MapModel;
-            if (map == null)
-            {
-                return;
-            }
-
-            ulong xor = 0;
-            ulong sum = 0;
-            foreach (var building in map.Buildings.Cast<BuildingModel?>())
-            {
-                if (!building.HasValue) continue;
-                buildingCount++;
-                var descriptor = $"{building.Value.Id}|{building.Value.Tile_G}|{building.Value.Configuration?.GetType().FullName}";
-                var entryHash = 14695981039346656037UL;
-                foreach (var character in descriptor)
-                {
-                    entryHash ^= character;
-                    entryHash *= 1099511628211UL;
-                }
-                xor ^= entryHash;
-                sum += entryHash * 1099511628211UL;
-            }
-            digest ^= xor;
-            digest ^= (sum << 17) | (sum >> 47);
-            digest ^= (ulong)buildingCount * 0x9E3779B185EBCA87UL;
+            // BuildingCount is maintained by the game and is O(1). The previous
+            // implementation walked and stringified every building on every peer
+            // every three seconds, causing visible GC and frame-time spikes on
+            // large factories. Reliable ordered actions provide the primary
+            // topology guarantee; this heartbeat cheaply detects missing/additional
+            // buildings without scanning the entire world.
+            buildingCount = map?.BuildingCount ?? 0;
+            digest = ((ulong)(uint)buildingCount * 0x9E3779B185EBCA87UL) ^ 0xD6E8FEB86659FD93UL;
         }
 
         public static void ObserveWorldDigest(ulong revision, int hostBuildingCount, ulong hostDigest)
@@ -337,7 +326,7 @@ namespace Shapez2Multiplayer
             WorldMismatchNotificationShown = true;
             Shapez2Multiplayer.HUD?.Events.ShowNotification.Invoke(new HUDNotificationData(
                 HUDNotificationType.Info,
-                new RawText("Multiplayer world topology differs from the host. Reconnect to reload the host's world safely.")));
+                new RawText("Multiplayer building count differs from the host. Reconnect to reload the host's world safely.")));
         }
 
         public static bool TryApplyWaypoints(IReadOnlyList<PlayerWaypoint> targetWaypoints)

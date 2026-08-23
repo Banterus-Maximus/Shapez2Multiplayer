@@ -25,10 +25,12 @@ This fork explicitly sends gameplay mutations reliably and in order. Client
 player actions receive host acknowledgements, are relayed to other players only
 after host validation, and trigger repair snapshots when rejected or timed out.
 Research, operator jobs/levels, vortex totals, pins, and waypoints use repeating
-host-authoritative snapshots. A watchdog requests a targeted replacement if one
+host-authoritative snapshots. These complete, replaceable snapshots use a
+latest-value transport path so they cannot block reliable building actions; a
+watchdog requests a targeted replacement if one
 stops arriving or fails to converge. The multiplayer pause menu also includes a
-`RESYNC` button for an immediate repair request. A low-frequency world topology
-fingerprint detects persistent building/placement divergence and tells the
+`RESYNC` button for an immediate repair request. A low-frequency, constant-time
+building-count heartbeat detects common persistent placement divergence and tells the
 affected client to reconnect instead of allowing a silent bad session to continue.
 
 Belt, pipe, train movement, and logic simulation internals are still simulated
@@ -79,7 +81,7 @@ ENet libraries compiled from https://github.com/nxrighthere/ENet-CSharp
    The project writes the complete local mod directly to
    `%SPZ2_PERSISTENT%\mods\Shapez2Multiplayer`.
 7. Start shapez 2, open the Mods screen, enable the local
-   Shapez2Multiplayer v1.2.0-local.11 entry and its dependencies, then restart
+   Shapez2Multiplayer v1.2.0-local.12 entry and its dependencies, then restart
    when prompted. Repeat the same source/build steps on the other PC, or copy
    the completed `%SPZ2_PERSISTENT%\mods\Shapez2Multiplayer` folder to the same
    location on that PC.

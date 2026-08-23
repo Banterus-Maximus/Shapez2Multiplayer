@@ -3,8 +3,8 @@
 namespace Shapez2Multiplayer.Packets
 {
     /// <summary>
-    /// Cheap topology fingerprint used to detect world divergence which cannot be
-    /// repaired safely without reloading a savegame.
+    /// Cheap building-count heartbeat used to detect common world divergence
+    /// without scanning the complete factory on every peer.
     /// </summary>
     public class SyncWorldDigestPacket : IPacket
     {

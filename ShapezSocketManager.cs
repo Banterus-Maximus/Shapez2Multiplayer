@@ -15,6 +15,20 @@ namespace Shapez2Multiplayer
         private List<ISocketManager> _socketManagers = new List<ISocketManager>();
         public IReadOnlyCollection<ISocketManager> SocketManagers => _socketManagers;
         public IReadOnlyCollection<IConnection> Connected => _socketManagers.SelectMany(s => s.Connected).ToArray();
+        private bool HasConnectedPlayers
+        {
+            get
+            {
+                lock (_socketManagers)
+                {
+                    foreach (var socketManager in _socketManagers)
+                    {
+                        if (socketManager.Connected.Count > 0) return true;
+                    }
+                }
+                return false;
+            }
+        }
         public List<IConnection> Connecting = new List<IConnection>();
         public List<Tuple<IPacket, IConnection>> BufferedRecievePackets = new List<Tuple<IPacket, IConnection>>();
         public List<IPacket> BufferedSendToAllPackets = new List<IPacket>();
@@ -364,13 +378,13 @@ namespace Shapez2Multiplayer
         // repairs a packet lost during the savegame/orchestrator transition.
         const float SYNC_PAUSE_TIME = 1.0f;
         // Research credits change without always going through player actions.
-        const float SYNC_RESEARCH_TIME = 1.0f;
+        const float SYNC_RESEARCH_TIME = 2.0f;
         // Vortex totals have a separate cadence so unrelated research handling
         // cannot delay or invalidate delivered-shape reconciliation.
-        const float SYNC_VORTEX_TIME = 0.5f;
-        const float SYNC_PINS_TIME = 5.0f;
-        const float SYNC_WAYPOINTS_TIME = 5.0f;
-        const float SYNC_WORLD_DIGEST_TIME = 3.0f;
+        const float SYNC_VORTEX_TIME = 1.0f;
+        const float SYNC_PINS_TIME = 15.0f;
+        const float SYNC_WAYPOINTS_TIME = 15.0f;
+        const float SYNC_WORLD_DIGEST_TIME = 15.0f;
         const float SYNC_MASS_SELECTIONS_TIME = 1.0f;
         const float SYNC_LOBBY_DATA_TIME = 60.0f * 5f;
         const float SYNC_CURSOR_TIME = 0.1f;
@@ -384,7 +398,7 @@ namespace Shapez2Multiplayer
         public void BroadcastResearchState(IConnection? target = null)
         {
             if (target == null) SyncResearchTimer = 0.0f;
-            if (Shapez2Multiplayer.Research == null || Connected.Count == 0) return;
+            if (Shapez2Multiplayer.Research == null || !HasConnectedPlayers) return;
             var packet = new SyncResearchManagerPacket(Shapez2Multiplayer.Research, ++ResearchRevision);
             if (target == null) SendToAll(packet); else SendTo(packet, target);
         }
@@ -392,7 +406,7 @@ namespace Shapez2Multiplayer
         public void BroadcastVortexState(IConnection? target = null)
         {
             if (target == null) SyncVortexTimer = 0.0f;
-            if (Shapez2Multiplayer.Research == null || Connected.Count == 0) return;
+            if (Shapez2Multiplayer.Research == null || !HasConnectedPlayers) return;
             var packet = new SyncVortexStoragePacket(Shapez2Multiplayer.Research.ShapeStorage, ++VortexRevision);
             if (target == null) SendToAll(packet); else SendTo(packet, target);
         }
@@ -400,7 +414,7 @@ namespace Shapez2Multiplayer
         public void BroadcastPinState(IConnection? target = null)
         {
             if (target == null) SyncPinsTimer = 0.0f;
-            if (Shapez2Multiplayer.GameSessionOrchestrator == null || Connected.Count == 0) return;
+            if (Shapez2Multiplayer.GameSessionOrchestrator == null || !HasConnectedPlayers) return;
             var packet = new SyncPinsPacket(++PinRevision);
             if (target == null) SendToAll(packet); else SendTo(packet, target);
         }
@@ -408,7 +422,7 @@ namespace Shapez2Multiplayer
         public void BroadcastWaypointState(IConnection? target = null)
         {
             if (target == null) SyncWaypointsTimer = 0.0f;
-            if (Shapez2Multiplayer.PlayerWaypoints == null || Connected.Count == 0) return;
+            if (Shapez2Multiplayer.PlayerWaypoints == null || !HasConnectedPlayers) return;
             var packet = new SyncWaypointsPacket(++WaypointRevision);
             if (target == null) SendToAll(packet); else SendTo(packet, target);
         }
@@ -416,7 +430,7 @@ namespace Shapez2Multiplayer
         public void BroadcastWorldDigest(IConnection? target = null)
         {
             if (target == null) SyncWorldDigestTimer = 0.0f;
-            if (Shapez2Multiplayer.MapModel == null || Connected.Count == 0) return;
+            if (Shapez2Multiplayer.MapModel == null || !HasConnectedPlayers) return;
             var packet = new SyncWorldDigestPacket(++WorldDigestRevision);
             if (target == null) SendToAll(packet); else SendTo(packet, target);
         }
@@ -469,7 +483,7 @@ namespace Shapez2Multiplayer
                     if (sm.Valid) sm.Update();
                 }
             }
-            if (Connected.Count > 0)
+            if (HasConnectedPlayers)
             {
                 // Simulation pause can stop scaled delta time, so use unscaled time.
                 SyncPauseTimer += Time.unscaledDeltaTime;

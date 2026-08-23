@@ -5,15 +5,21 @@ namespace Shapez2Multiplayer
 {
     public static class PacketDelivery
     {
-        // Cursor/preview packets are "latest value wins" presentation data. All
-        // gameplay mutations and authoritative snapshots must be reliable and
-        // ordered so a lost placement or claim cannot permanently fork the map.
+        // Cursor/preview packets and complete repeating snapshots are "latest
+        // value wins" data. Keeping them off the reliable gameplay queue avoids
+        // head-of-line stalls; a later full snapshot repairs a dropped one.
+        // Mutations, requests, acknowledgements and pause state remain reliable.
         public static bool IsReliable(Packet packet)
         {
             return packet != Packet.Cursor &&
                 packet != Packet.PlacementIndicatorData &&
                 packet != Packet.UpdateBuildingMassSelection &&
-                packet != Packet.UpdateIslandMassSelection;
+                packet != Packet.UpdateIslandMassSelection &&
+                packet != Packet.SyncResearchManager &&
+                packet != Packet.SyncVortexStorage &&
+                packet != Packet.SyncPins &&
+                packet != Packet.SyncWaypoints &&
+                packet != Packet.SyncWorldDigest;
         }
     }
 

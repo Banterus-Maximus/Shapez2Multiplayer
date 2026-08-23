@@ -44,8 +44,8 @@ namespace Shapez2Multiplayer
             ENet.Packet packet = new ENet.Packet();
             var reliable = PacketDelivery.IsReliable(type);
             packet.Create(compressed, reliable ? PacketFlags.Reliable : PacketFlags.None);
-            // Keep high-rate cursor/preview traffic off the ordered gameplay
-            // channel so it cannot delay construction or authoritative snapshots.
+            // Keep high-rate/replaceable traffic off the ordered gameplay channel
+            // so it cannot delay construction, claims, or configuration changes.
             return Peer.Send(reliable ? (byte)0 : (byte)1, ref packet);
         }
 

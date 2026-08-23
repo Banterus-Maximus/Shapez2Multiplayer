@@ -12,6 +12,7 @@ namespace Shapez2Multiplayer.Packets
     {
         private static readonly List<PendingConfiguration> PendingConfigurations = new List<PendingConfiguration>();
         private const float ConfigurationRetrySeconds = 10.0f;
+        private static float NextRetryTime;
         public GlobalTileCoordinate TileCoordinate { get; set; }
         public IBuildingConfiguration BuildingConfiguration { get; set; }
         public byte[] RemainingData { get; set; }
@@ -58,6 +59,11 @@ namespace Shapez2Multiplayer.Packets
             }
 
             var now = Time.realtimeSinceStartup;
+            if (now < NextRetryTime)
+            {
+                return;
+            }
+            NextRetryTime = now + 0.1f;
             foreach (var pending in PendingConfigurations.ToList())
             {
                 if (pending.Packet.TryApply())
@@ -86,6 +92,7 @@ namespace Shapez2Multiplayer.Packets
         public static void ClearPendingConfigurations()
         {
             PendingConfigurations.Clear();
+            NextRetryTime = 0.0f;
         }
 
         private bool TryApply()
