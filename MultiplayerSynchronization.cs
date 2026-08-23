@@ -222,7 +222,8 @@ namespace Shapez2Multiplayer
             {
                 foreach (var item in dictionary.Values)
                 {
-                    if (item is not IPin pin)
+                    var pin = item as IPin;
+                    if (pin is null)
                     {
                         pins.Clear();
                         return false;
@@ -232,14 +233,16 @@ namespace Shapez2Multiplayer
                 return true;
             }
 
-            if (value is not IEnumerable enumerable)
+            var enumerable = value as IEnumerable;
+            if (enumerable is null)
             {
                 return false;
             }
 
             foreach (var item in enumerable)
             {
-                if (item is not IPin pin)
+                var pin = item as IPin;
+                if (pin is null)
                 {
                     pins.Clear();
                     return false;
