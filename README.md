@@ -38,15 +38,23 @@ ENet libraries compiled from https://github.com/nxrighthere/ENet-CSharp
 5. Locate `Shapez2UILib.dll`. It will either be under
    `%SPZ2_PERSISTENT%\mods\Shapez2UILib`, or in Steam's Workshop content folder
    for item `3735218203`.
-6. From this repository, run the following in PowerShell, replacing the path in
-   the first line if necessary:
+6. From this repository, run the included PowerShell build script. Its default
+   Workshop path matches a Steam library on `F:`:
 
    ```powershell
-   $uiLib = Get-ChildItem "C:\Program Files (x86)\Steam\steamapps\workshop\content\2162800\3735218203" -Recurse -Filter Shapez2UILib.dll | Select-Object -First 1 -ExpandProperty FullName
-   if (-not $uiLib) { throw "Shapez2UILib.dll was not found; set `$uiLib to its full path." }
-   dotnet restore .\Shapez2Multiplayer.csproj
-   dotnet build .\Shapez2Multiplayer.csproj -c Release -p:SPZ2_UILIB_PATH="$uiLib"
+   .\Build.ps1
    ```
+
+   For another Steam library, provide either the Workshop item directory or
+   the DLL directly:
+
+   ```powershell
+   .\Build.ps1 -WorkshopPath "C:\Program Files (x86)\Steam\steamapps\workshop\content\2162800\3735218203"
+   .\Build.ps1 -UiLibPath "C:\full\path\to\Shapez2UILib.dll"
+   ```
+
+   Add `-NoPause` when running the script from an existing terminal or an
+   automated build.
 
    The project writes the complete local mod directly to
    `%SPZ2_PERSISTENT%\mods\Shapez2Multiplayer`.
