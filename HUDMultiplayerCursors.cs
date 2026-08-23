@@ -59,7 +59,7 @@ namespace Shapez2Multiplayer
         {
             foreach (var c in Cursors)
             {
-                if (c.Connection.Equals(connection))
+                if (c.Connection != null && c.Connection.UniversalId == connection.UniversalId)
                 {
                     cursor = c;
                     return true;
@@ -67,6 +67,15 @@ namespace Shapez2Multiplayer
             }
             cursor = null;
             return false;
+        }
+        public bool TryGetPlayerCursor(IConnection connection, bool representsHost, out HUDCursor cursor)
+        {
+            if (representsHost)
+            {
+                cursor = HostCursor;
+                return cursor != null;
+            }
+            return TryGetCursor(connection, out cursor);
         }
         public HUDCursor GetOrAddCursor(IConnection connection)
         {

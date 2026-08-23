@@ -12,6 +12,7 @@
     "multiplayer.stophosting": "STOP HOSTING",
     "multiplayer.inlobby": "IN LOBBY",
     "multiplayer.kick": "KICK",
+    "multiplayer.jump": "JUMP",
     "multiplayer.disconnected-dialog.title": "DISCONNECTED",
     "multiplayer.disconnected-dialog.description-timedout": "Timed out",
     "multiplayer.disconnected-dialog.description-lostconnection": "Lost connection",

@@ -14,7 +14,8 @@ namespace Shapez2Multiplayer
         public RectTransform uiRectTransform { get; set; }
         public CursorHoverState? CurrentState { get; set; }
         public float3 WorldPosition { get; private set; }
-        private float3 LatestWorldPosition { get; set; }
+        public float3 LatestWorldPosition { get; private set; }
+        public bool HasWorldPosition { get; private set; }
         private float3 LastWorldPosition { get; set; }
         public short? ViewportIslandLayer { get; set; }
         public short? ViewportBuildingLayer { get; set; }
@@ -52,6 +53,15 @@ namespace Shapez2Multiplayer
         }
         public void SetWorldPosition(float3 worldPosition)
         {
+            if (!HasWorldPosition)
+            {
+                WorldPosition = worldPosition;
+                LastWorldPosition = worldPosition;
+                LatestWorldPosition = worldPosition;
+                HasWorldPosition = true;
+                elapsed = LerpDuration;
+                return;
+            }
             LastWorldPosition = LatestWorldPosition;
             LatestWorldPosition = worldPosition;
             elapsed = 0f;
