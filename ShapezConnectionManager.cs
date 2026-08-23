@@ -52,6 +52,7 @@ namespace Shapez2Multiplayer
         {
             OtherPlayerConnected?.Invoke(connection);
             HUDMultiplayerPausePanel.instance?.AddPlayer(connection);
+            HUDMultiplayerJumpPanel.Instance?.AddPlayer(connection);
             if (connection.UniversalId != UniversalId && FinishedConnecting)
             {
                 PlayersDrawers.Add(connection.UniversalId, Shapez2Multiplayer.CreateOtherPlayerEntityPlacementDrawer());
@@ -66,6 +67,7 @@ namespace Shapez2Multiplayer
         {
             OtherPlayerDisconnected?.Invoke(connection);
             HUDMultiplayerPausePanel.instance?.RemovePlayer(connection);
+            HUDMultiplayerJumpPanel.Instance?.RemovePlayer(connection);
             PlayersDrawers.Remove(connection.UniversalId);
             PlayersBuildingMassSelections.Remove(connection.UniversalId);
             PlayersIslandMassSelections.Remove(connection.UniversalId);
