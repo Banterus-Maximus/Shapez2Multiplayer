@@ -81,7 +81,7 @@ namespace Shapez2Multiplayer.Packets
                 foreach (var id in allLinearUpgradeIds)
                 {
                     var linearUpgradeId = new ResearchLinearUpgradeId(id);
-                    var targetLevel = ResearchManagerSerializedData.LinearUpgrades.UpgradeLevels.GetValueOrDefault(id, 0);
+                    ResearchManagerSerializedData.LinearUpgrades.UpgradeLevels.TryGetValue(id, out var targetLevel);
                     var hadCurrentLevel = researchManager.LinearUpgradeManager.Levels.TryGetValue(linearUpgradeId, out var currentLevel);
                     if (!hadCurrentLevel || currentLevel != targetLevel)
                     {

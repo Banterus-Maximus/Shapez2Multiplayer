@@ -100,7 +100,7 @@ namespace Shapez2Multiplayer.Packets
                 {
                     try
                     {
-                        var serializedTarget = Shapes.StoredShapes.GetValueOrDefault(shapeKey, 0);
+                        Shapes.StoredShapes.TryGetValue(shapeKey, out var serializedTarget);
                         if (serializedTarget < 0)
                         {
                             Shapez2Multiplayer.logger.Warning?.Log($"Ignored invalid negative vortex total for shape {shapeKey}.");
