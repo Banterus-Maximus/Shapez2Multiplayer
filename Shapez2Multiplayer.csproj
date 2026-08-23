@@ -120,10 +120,14 @@
       <HintPath>$(SPZ2_PATH)\UnityEngine.CoreModule.dll</HintPath>
 	  <Private>False</Private>
     </Reference>
-	  <Reference Include="UnityEngine.UIModule">
-		  <HintPath>$(SPZ2_PATH)\UnityEngine.UIModule.dll</HintPath>
-		  <Private>False</Private>
-	  </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(SPZ2_PATH)\UnityEngine.UIModule.dll</HintPath>
+	  <Private>False</Private>
+    </Reference>
+	<Reference Include="UnityEngine.TextRenderingModule">
+	  <HintPath>$(SPZ2_PATH)\UnityEngine.TextRenderingModule.dll</HintPath>
+	  <Private>False</Private>
+	</Reference>
 	  <Reference Include="UnityEngine.UI">
 		  <HintPath>$(SPZ2_PATH)\UnityEngine.UI.dll</HintPath>
 		  <Private>False</Private>
