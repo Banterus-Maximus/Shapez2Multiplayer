@@ -29,7 +29,8 @@ namespace Shapez2Multiplayer.Packets
         UpdateBuildingConfiguration,
         UpdateWaypoint,
         DeleteWaypoint,
-        SyncPins
+        SyncPins,
+        GrantPlayerLevel
     }
     public static class PacketExtensions
     {
@@ -60,6 +61,7 @@ namespace Shapez2Multiplayer.Packets
                 Packet.UpdateWaypoint => typeof(UpdateWaypointPacket),
                 Packet.DeleteWaypoint => typeof(DeleteWaypointPacket),
                 Packet.SyncPins => typeof(SyncPinsPacket),
+                Packet.GrantPlayerLevel => typeof(GrantPlayerLevelPacket),
                 _ => throw new ArgumentException("Invalid packet"),
             };
         public static Packet GetFromType(Type type)
@@ -88,6 +90,7 @@ namespace Shapez2Multiplayer.Packets
             else if (type == typeof(UpdateWaypointPacket)) return Packet.UpdateWaypoint;
             else if (type == typeof(DeleteWaypointPacket)) return Packet.DeleteWaypoint;
             else if (type == typeof(SyncPinsPacket)) return Packet.SyncPins;
+            else if (type == typeof(GrantPlayerLevelPacket)) return Packet.GrantPlayerLevel;
             throw new ArgumentException("Invalid packet type");
         }
         public static byte[]? Encode(IPacket packet, uint? from = null)

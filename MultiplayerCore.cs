@@ -14,8 +14,8 @@ namespace Shapez2Multiplayer
 {
     public static class MultiplayerCore
     {
-        public const string NetworkCompatibleModVersion = "1.2.0-local.4";
-        public const int NetworkProtocolVersion = 5;
+        public const string NetworkCompatibleModVersion = "1.2.0-local.6";
+        public const int NetworkProtocolVersion = 7;
         public static ShapezSocketManager? socketManager;
         public static ShapezConnectionManager? connectionManager;
         public static Lobby? Lobby;

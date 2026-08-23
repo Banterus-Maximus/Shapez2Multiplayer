@@ -79,6 +79,162 @@ namespace Shapez2Multiplayer
         public static readonly Dictionary<GlobalTileCoordinate, BuildingId> DeletedBuildingIds = new Dictionary<GlobalTileCoordinate, BuildingId>();
         public static readonly Dictionary<GlobalChunkCoordinate, IslandId> DeletedIslandIds = new Dictionary<GlobalChunkCoordinate, IslandId>();
         public static ISerializationVisitor serializationVisitor;
+
+        private static void EncodeBuildingConfiguration(IBuildingConfiguration configuration, Stream stream)
+        {
+            using BinaryWriter writer = new BinaryWriter(stream, UTF8Encoding.UTF8, leaveOpen: true);
+            writer.Write(configuration.GetType().AssemblyQualifiedName ?? configuration.GetType().FullName);
+
+            // Keep configuration data length-delimited. If a modded or newly-added
+            // configuration cannot be created, the rest of the placement packet
+            // can still be decoded instead of becoming byte-misaligned.
+            using MemoryStream configurationStream = new MemoryStream();
+            if (configuration is FluidProducerConfiguration fluidProducerConfiguration)
+            {
+                Encode(fluidProducerConfiguration.ProvidingFlow, configurationStream);
+            }
+            var visitor = new BinarySerializationVisitor(true, false, Savegame.CurrentVersion, configurationStream, Shapez2Multiplayer.GameSessionOrchestrator.DataSerializers, Shapez2Multiplayer.logger);
+            configuration.Sync(visitor);
+
+            byte[] data = configurationStream.ToArray();
+            writer.Write(data.Length);
+            writer.Write(data);
+        }
+
+        private static IBuildingConfiguration DecodeBuildingConfiguration(BuildingDefinition definition, Stream stream)
+        {
+            using BinaryReader reader = new BinaryReader(stream, UTF8Encoding.UTF8, leaveOpen: true);
+            string serializedTypeName = reader.ReadString();
+            byte[] data = ReadFramedData(reader, stream, "building configuration");
+            Type serializedType = Type.GetType(serializedTypeName);
+
+            using MemoryStream configurationStream = new MemoryStream(data, writable: false);
+            IBuildingConfiguration configuration = null;
+            if (serializedType == typeof(FluidProducerConfiguration))
+            {
+                configuration = new FluidProducerConfiguration(DecodeIFluidFlow(configurationStream));
+            }
+            else
+            {
+                try
+                {
+                    // Definitions own configuration construction. Several fluid
+                    // configurations require dependencies and have no empty ctor.
+                    definition.TryCreateConfiguration(out configuration);
+                }
+                catch (Exception ex)
+                {
+                    Shapez2Multiplayer.logger.Warning.Log($"The configuration factory for building {definition.Id} failed: {ex.Message}");
+                }
+            }
+
+            if (configuration == null && serializedType != null && typeof(IBuildingConfiguration).IsAssignableFrom(serializedType))
+            {
+                try
+                {
+                    configuration = (IBuildingConfiguration)Activator.CreateInstance(serializedType);
+                }
+                catch (Exception ex)
+                {
+                    Shapez2Multiplayer.logger.Warning.Log($"Could not construct fallback building configuration {serializedTypeName}: {ex.Message}");
+                }
+            }
+
+            if (configuration == null)
+            {
+                Shapez2Multiplayer.logger.Warning.Log($"Could not create building configuration {serializedTypeName} for {definition.Id}; the framed configuration was skipped safely");
+                return null;
+            }
+
+            if (serializedType == null || configuration.GetType() != serializedType)
+            {
+                Shapez2Multiplayer.logger.Warning.Log($"Building {definition.Id} created configuration {configuration.GetType().FullName}, but the sender used {serializedTypeName}; the framed configuration was skipped safely");
+                return null;
+            }
+
+            var visitor = new BinarySerializationVisitor(false, false, Savegame.CurrentVersion, configurationStream, Shapez2Multiplayer.GameSessionOrchestrator.DataSerializers, Shapez2Multiplayer.logger);
+            configuration.Sync(visitor);
+            return configuration;
+        }
+
+        private static void EncodeIslandConfiguration(IIslandConfiguration configuration, Stream stream)
+        {
+            using BinaryWriter writer = new BinaryWriter(stream, UTF8Encoding.UTF8, leaveOpen: true);
+            writer.Write(configuration.GetType().AssemblyQualifiedName ?? configuration.GetType().FullName);
+
+            using MemoryStream configurationStream = new MemoryStream();
+            var visitor = new BinarySerializationVisitor(true, false, Savegame.CurrentVersion, configurationStream, Shapez2Multiplayer.GameSessionOrchestrator.DataSerializers, Shapez2Multiplayer.logger);
+            configuration.Sync(visitor);
+
+            byte[] data = configurationStream.ToArray();
+            writer.Write(data.Length);
+            writer.Write(data);
+        }
+
+        private static IIslandConfiguration DecodeIslandConfiguration(IslandDefinition definition, Stream stream)
+        {
+            using BinaryReader reader = new BinaryReader(stream, UTF8Encoding.UTF8, leaveOpen: true);
+            string serializedTypeName = reader.ReadString();
+            byte[] data = ReadFramedData(reader, stream, "island configuration");
+            Type serializedType = Type.GetType(serializedTypeName);
+
+            IIslandConfiguration configuration = null;
+            try
+            {
+                definition.TryCreateConfiguration(out configuration);
+            }
+            catch (Exception ex)
+            {
+                Shapez2Multiplayer.logger.Warning.Log($"The configuration factory for island {definition.Id} failed: {ex.Message}");
+            }
+
+            if (configuration == null && serializedType != null && typeof(IIslandConfiguration).IsAssignableFrom(serializedType))
+            {
+                try
+                {
+                    configuration = (IIslandConfiguration)Activator.CreateInstance(serializedType);
+                }
+                catch (Exception ex)
+                {
+                    Shapez2Multiplayer.logger.Warning.Log($"Could not construct fallback island configuration {serializedTypeName}: {ex.Message}");
+                }
+            }
+
+            if (configuration == null)
+            {
+                Shapez2Multiplayer.logger.Warning.Log($"Could not create island configuration {serializedTypeName} for {definition.Id}; the framed configuration was skipped safely");
+                return null;
+            }
+
+            if (serializedType == null || configuration.GetType() != serializedType)
+            {
+                Shapez2Multiplayer.logger.Warning.Log($"Island {definition.Id} created configuration {configuration.GetType().FullName}, but the sender used {serializedTypeName}; the framed configuration was skipped safely");
+                return null;
+            }
+
+            using MemoryStream configurationStream = new MemoryStream(data, writable: false);
+            var visitor = new BinarySerializationVisitor(false, false, Savegame.CurrentVersion, configurationStream, Shapez2Multiplayer.GameSessionOrchestrator.DataSerializers, Shapez2Multiplayer.logger);
+            configuration.Sync(visitor);
+            return configuration;
+        }
+
+        private static byte[] ReadFramedData(BinaryReader reader, Stream stream, string description)
+        {
+            int length = reader.ReadInt32();
+            long remaining = stream.Length - stream.Position;
+            if (length < 0 || length > remaining)
+            {
+                throw new InvalidDataException($"Invalid {description} length {length}; only {remaining} bytes remain");
+            }
+
+            byte[] data = reader.ReadBytes(length);
+            if (data.Length != length)
+            {
+                throw new EndOfStreamException($"Expected {length} bytes for {description}, received {data.Length}");
+            }
+            return data;
+        }
+
         public static void Encode(float2 float2, Stream stream)
         {
             using BinaryWriter writer = new BinaryWriter(stream, UTF8Encoding.UTF8, leaveOpen: true);
@@ -1461,8 +1617,7 @@ namespace Shapez2Multiplayer
             writer.Write(placePayload.Configuration != null);
             if (placePayload.Configuration != null)
             {
-                writer.Write(placePayload.Configuration.GetType().AssemblyQualifiedName);
-                placePayload.Configuration.Sync(serializationVisitor);
+                EncodeIslandConfiguration(placePayload.Configuration, stream);
             }
             Encode(placePayload.Origin_GC, stream);
             Encode(placePayload.Rotation, stream);
@@ -1494,15 +1649,7 @@ namespace Shapez2Multiplayer
             IIslandConfiguration configuration = null;
             if (reader.ReadBoolean())
             {
-                Type type = Type.GetType(reader.ReadString());
-                if (typeof(IIslandConfiguration).IsAssignableFrom(type))
-                {
-                    configuration = (IIslandConfiguration)Activator.CreateInstance(type);
-                    configuration.Sync(serializationVisitor);
-                } else
-                {
-                    Shapez2Multiplayer.logger.Warning.Log($"Type {type.FullName} is not an IIslandConfiguration, skipping");
-                }
+                configuration = DecodeIslandConfiguration(definition, stream);
             }
             
             var Origin_GC = DecodeGlobalChunkCoordinate(stream);
@@ -1598,8 +1745,7 @@ namespace Shapez2Multiplayer
             writer.Write(placeBuildingPayload.Configuration != null);
             if (placeBuildingPayload.Configuration != null)
             {
-                writer.Write(placeBuildingPayload.Configuration.GetType().AssemblyQualifiedName);
-                placeBuildingPayload.Configuration.Sync(serializationVisitor);
+                EncodeBuildingConfiguration(placeBuildingPayload.Configuration, stream);
             }
             writer.Write(placeBuildingPayload.SerializedState != null);
             if (placeBuildingPayload.SerializedState != null)
@@ -1649,16 +1795,7 @@ namespace Shapez2Multiplayer
             IBuildingConfiguration configuration = null;
             if (reader.ReadBoolean())
             {
-                Type type = Type.GetType(reader.ReadString());
-                if (typeof(IBuildingConfiguration).IsAssignableFrom(type))
-                {
-                    configuration = (IBuildingConfiguration)Activator.CreateInstance(type);
-                    configuration.Sync(serializationVisitor);
-                }
-                else
-                {
-                    Shapez2Multiplayer.logger.Warning.Log($"Type {type.FullName} is not an IBuildingConfiguration, skipping");
-                }
+                configuration = DecodeBuildingConfiguration(definition, stream);
             }
             byte[] serializedState = null;
             if (reader.ReadBoolean()) serializedState = reader.ReadBytes(reader.ReadInt32());
@@ -2041,8 +2178,7 @@ namespace Shapez2Multiplayer
             writer.Write(islandDescriptor.Configuration != null);
             if (islandDescriptor.Configuration != null)
             {
-                writer.Write(islandDescriptor.Configuration.GetType().AssemblyQualifiedName);
-                islandDescriptor.Configuration.Sync(serializationVisitor);
+                EncodeIslandConfiguration(islandDescriptor.Configuration, stream);
             }
             //Encode(islandDescriptor.State, stream);
             var state = islandDescriptor.State.State;
@@ -2057,16 +2193,7 @@ namespace Shapez2Multiplayer
             IIslandConfiguration configuration = null;
             if (reader.ReadBoolean())
             {
-                Type configType = Type.GetType(reader.ReadString());
-                if (typeof(IIslandConfiguration).IsAssignableFrom(configType))
-                {
-                    configuration = (IIslandConfiguration)Activator.CreateInstance(configType);
-                    configuration.Sync(serializationVisitor);
-                }
-                else
-                {
-                    Shapez2Multiplayer.logger.Warning.Log($"Type {configType.FullName} is not an IIslandConfiguration, skipping");
-                }
+                configuration = DecodeIslandConfiguration(type, stream);
             }
             var state = new SimulationStateContainer();
             if (reader.ReadBoolean()) state.Sync(serializationVisitor);
@@ -2081,12 +2208,7 @@ namespace Shapez2Multiplayer
             writer.Write(buildingDescriptor.Configuration != null);
             if (buildingDescriptor.Configuration != null)
             {
-                writer.Write(buildingDescriptor.Configuration.GetType().AssemblyQualifiedName);
-                if (buildingDescriptor.Configuration is FluidProducerConfiguration fluidProducerConfiguration)
-                {
-                    Encode(fluidProducerConfiguration.ProvidingFlow, stream);
-                }
-                buildingDescriptor.Configuration.Sync(serializationVisitor);
+                EncodeBuildingConfiguration(buildingDescriptor.Configuration, stream);
             }
             //Encode(buildingDescriptor.State, stream);
             var state = buildingDescriptor.State.State;
@@ -2101,23 +2223,7 @@ namespace Shapez2Multiplayer
             IBuildingConfiguration configuration = null;
             if (reader.ReadBoolean())
             {
-                Type configurationType = Type.GetType(reader.ReadString());
-                if (typeof(IBuildingConfiguration).IsAssignableFrom(configurationType))
-                {
-                    if (configurationType == typeof(FluidProducerConfiguration))
-                    {
-                        configuration = new FluidProducerConfiguration(DecodeIFluidFlow(stream));
-                    }
-                    else
-                    {
-                        configuration = (IBuildingConfiguration)Activator.CreateInstance(configurationType);
-                    }
-                    configuration.Sync(serializationVisitor);
-                }
-                else
-                {
-                    Shapez2Multiplayer.logger.Warning.Log($"Type {configurationType.FullName} is not an IBuildingConfiguration, skipping");
-                }
+                configuration = DecodeBuildingConfiguration(type, stream);
             }
             var state = new SimulationStateContainer();
             if (reader.ReadBoolean()) state.Sync(serializationVisitor);

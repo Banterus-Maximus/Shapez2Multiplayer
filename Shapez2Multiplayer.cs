@@ -734,16 +734,55 @@ namespace Shapez2Multiplayer
         }
         [HarmonyPatch(typeof(ResearchPlayerLevelManager), nameof(ResearchPlayerLevelManager.GrantPlayerLevel))]
         [HarmonyPrefix]
-        public static bool ResearchPlayerLevelManagerGrantPlayerLevelPrefix()
+        public static bool ResearchPlayerLevelManagerGrantPlayerLevelPrefix(ResearchPlayerLevelManager __instance)
         {
             // Operator-level progression is derived from vortex simulation, which
-            // is not deterministic between peers. Only the host may grant it;
-            // authoritative snapshots call this method with the apply flag set.
-            return !MultiplayerCore.Client ||
+            // is not deterministic between peers. Route a connected client's Claim
+            // through the host, while authoritative snapshots use the apply guard
+            // to replay the native level-up and unlock presentation locally.
+            if (!MultiplayerCore.Client ||
                 MultiplayerCore.connectionManager == null ||
                 !MultiplayerCore.connectionManager.FinishedConnecting ||
-                MultiplayerSynchronization.ApplyingAuthoritativeResearchState;
+                MultiplayerSynchronization.ApplyingAuthoritativeResearchState)
+            {
+                return true;
+            }
+
+            var expectedLevel = __instance.Level;
+            if (MultiplayerSynchronization.TryBeginPlayerLevelRequest(expectedLevel))
+            {
+                MultiplayerCore.connectionManager.Send(new GrantPlayerLevelPacket(expectedLevel));
+            }
+            return false;
         }
+
+        [HarmonyPatch]
+        public static class ResearchShapeStorageAddPatch
+        {
+            public static IEnumerable<MethodBase> TargetMethods()
+            {
+                // Patch every Add overload so a game update cannot bypass host
+                // authority merely by introducing a new delivery batch shape.
+                return AccessTools.GetDeclaredMethods(typeof(ResearchShapeStorage))
+                    .Where(method => method.Name == nameof(ResearchShapeStorage.Add));
+            }
+
+            [HarmonyPrefix]
+            public static bool Prefix()
+            {
+                // Belt and train vortex delivery simulations run independently on
+                // every peer. A train credits a large cargo at once, making even a
+                // small tick offset visible as job/operator-level desync. Clients
+                // therefore display only the host totals received in research
+                // snapshots. Savegame loading and snapshot reconciliation remain
+                // allowed through before connection and via the apply guard.
+                return !MultiplayerCore.Client ||
+                    MultiplayerCore.connectionManager == null ||
+                    !MultiplayerCore.connectionManager.FinishedConnecting ||
+                    MultiplayerSynchronization.ApplyingAuthoritativeResearchState;
+            }
+        }
+
         public static bool IgnorePinEvents = false;
         public static bool IgnoreWaypointEvents = false;
         [HarmonyPatch(typeof(HUDIslandGridVisualization), "Draw")]

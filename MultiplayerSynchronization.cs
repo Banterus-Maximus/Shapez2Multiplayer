@@ -19,6 +19,7 @@ namespace Shapez2Multiplayer
         public static ulong LastPinRevision { get; private set; }
         public static bool ApplyingAuthoritativeResearchState { get; set; }
         private static readonly HashSet<string> PendingJobRequests = new HashSet<string>();
+        private static readonly HashSet<int> PendingPlayerLevelRequests = new HashSet<int>();
 
         public static void ResetClientState()
         {
@@ -26,6 +27,7 @@ namespace Shapez2Multiplayer
             LastPinRevision = 0;
             ApplyingAuthoritativeResearchState = false;
             PendingJobRequests.Clear();
+            PendingPlayerLevelRequests.Clear();
             Shapez2Multiplayer.IgnorePinEvents = false;
         }
 
@@ -38,11 +40,17 @@ namespace Shapez2Multiplayer
         {
             LastResearchRevision = revision;
             PendingJobRequests.Clear();
+            PendingPlayerLevelRequests.Clear();
         }
 
         public static bool TryBeginJobRequest(string goalId, int expectedLevel)
         {
             return PendingJobRequests.Add(goalId + "\n" + expectedLevel);
+        }
+
+        public static bool TryBeginPlayerLevelRequest(int expectedLevel)
+        {
+            return PendingPlayerLevelRequests.Add(expectedLevel);
         }
 
         public static bool ShouldApplyPinRevision(ulong revision)

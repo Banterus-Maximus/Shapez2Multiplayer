@@ -116,9 +116,27 @@ namespace Shapez2Multiplayer.Packets
                 {
                     var linearUpgradeId = new ResearchLinearUpgradeId(id);
                     var targetLevel = ResearchManagerSerializedData.LinearUpgrades.UpgradeLevels.GetValueOrDefault(id, 0);
-                    if (!researchManager.LinearUpgradeManager.Levels.TryGetValue(linearUpgradeId, out var currentLevel) || currentLevel != targetLevel)
+                    var hadCurrentLevel = researchManager.LinearUpgradeManager.Levels.TryGetValue(linearUpgradeId, out var currentLevel);
+                    if (!hadCurrentLevel || currentLevel != targetLevel)
                     {
                         researchManager.LinearUpgradeManager.SetLevel(linearUpgradeId, targetLevel);
+
+                        // SetLevel updates the model but does not emit the local
+                        // player-action presentation used by the shop. Recreate it
+                        // only for an authoritative increase, so every remote player
+                        // gets the same upgrade animation and sound without spending
+                        // points or applying the upgrade a second time.
+                        var previousLevel = hadCurrentLevel ? currentLevel : 0;
+                        if (targetLevel > previousLevel && researchManager.LinearUpgradeManager.TryGetUpgrade(linearUpgradeId, out var upgrade))
+                        {
+                            Shapez2Multiplayer.PassiveEventBus?.Emit<PlayerUpgradedLinearUpgradeEvent>(new PlayerUpgradedLinearUpgradeEvent(Shapez2Multiplayer.GameSessionOrchestrator.LocalPlayer, upgrade));
+                            Shapez2Multiplayer.HudEvents?.ShowEpicNotification.Invoke(new HUDEpicNotificationData(
+                                "research.research-linear-upgrade-improved-notification.title".T(),
+                                "research.research-linear-upgrade-improved-notification.description".T()
+                                    .Bind("name", upgrade.Title)
+                                    .Bind("level", StringFormatting.FormatGenericCount(targetLevel + 1))));
+                            Shapez2Multiplayer.GameSessionOrchestratorDependencyContainer.Resolve<IUISoundPlayer>().PlayResearchUnlocked();
+                        }
                     }
                 }
 
@@ -151,6 +169,7 @@ namespace Shapez2Multiplayer.Packets
                     if (currentLevel < kvp.Value)
                     {
                         researchManager.PlayerLevelGoals._OnLeveledUp.Invoke(levelGoalId, kvp.Value);
+                        Shapez2Multiplayer.GameSessionOrchestratorDependencyContainer.Resolve<IUISoundPlayer>().PlayResearchUnlocked();
                     }
                 }
 
