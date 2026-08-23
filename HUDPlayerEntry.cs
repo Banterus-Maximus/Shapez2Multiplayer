@@ -55,6 +55,11 @@ namespace Shapez2Multiplayer
 
             var position = cursor.LatestWorldPosition;
             MultiplayerDontDestroyObject.RequestViewportJump(new double2(position.x, position.z));
+
+            // The pause menu restores the viewport it opened with when Hide runs.
+            // Close it as part of the jump; the viewport lock keeps that restore
+            // from overwriting the requested player position.
+            GetComponentInParent<HUDPauseMenu>()?.Hide();
         }
 
         public override void OnDispose()

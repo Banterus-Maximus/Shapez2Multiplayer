@@ -42,8 +42,11 @@ namespace Shapez2Multiplayer
                 return true;
             }
             ENet.Packet packet = new ENet.Packet();
-            packet.Create(compressed);
-            return Peer.Send(0, ref packet);
+            var reliable = PacketDelivery.IsReliable(type);
+            packet.Create(compressed, reliable ? PacketFlags.Reliable : PacketFlags.None);
+            // Keep high-rate cursor/preview traffic off the ordered gameplay
+            // channel so it cannot delay construction or authoritative snapshots.
+            return Peer.Send(reliable ? (byte)0 : (byte)1, ref packet);
         }
 
         public static implicit operator Peer(ENetConnection connection) => connection.Peer;

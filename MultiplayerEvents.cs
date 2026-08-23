@@ -60,6 +60,10 @@ namespace Shapez2Multiplayer
         {
             if (!MultiplayerCore.Hosting) throw new Exception("OnResearchPlayerLevelGoalManagerChanged Should Only Be Called On Host");
             MultiplayerCore.socketManager.BroadcastResearchState();
+            // TryLevelUp consumes the completed goal's shapes. Since vortex
+            // storage has its own packet, publish that changed balance alongside
+            // the new goal level or clients can keep an invalid Claim button.
+            MultiplayerCore.socketManager.BroadcastVortexState();
             MultiplayerCore.socketManager.BroadcastPinState();
         }
         public static void OnResearchUnlockProgressManagerChanged()
@@ -80,16 +84,19 @@ namespace Shapez2Multiplayer
         {
             if (Shapez2Multiplayer.IgnoreWaypointEvents) return;
             MultiplayerCore.SendToAll(new UpdateWaypointPacket(waypoint));
+            if (MultiplayerCore.Hosting) MultiplayerCore.socketManager.BroadcastWaypointState();
         }
         public static void OnWaypointChanged(IPlayerWaypoint waypoint)
         {
             if (Shapez2Multiplayer.IgnoreWaypointEvents) return;
             MultiplayerCore.SendToAll(new UpdateWaypointPacket(waypoint));
+            if (MultiplayerCore.Hosting) MultiplayerCore.socketManager.BroadcastWaypointState();
         }
         public static void OnWaypointRemoved(IPlayerWaypoint waypoint)
         {
             if (Shapez2Multiplayer.IgnoreWaypointEvents) return;
             MultiplayerCore.SendToAll(new DeleteWaypointPacket(waypoint));
+            if (MultiplayerCore.Hosting) MultiplayerCore.socketManager.BroadcastWaypointState();
         }
     }
 }

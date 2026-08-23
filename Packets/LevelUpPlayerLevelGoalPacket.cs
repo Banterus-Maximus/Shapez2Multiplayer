@@ -51,6 +51,9 @@ namespace Shapez2Multiplayer.Packets
                 Shapez2Multiplayer.logger.Warning.Log("Client tried to level up player level goal when not able to, likely desync, research manager will be resynced now.");
             }
             MultiplayerCore.socketManager.BroadcastResearchState();
+            // Broadcast even when TryLevelUp failed. This repairs the requesting
+            // client's eligibility display from the host's actual shape balance.
+            MultiplayerCore.socketManager.BroadcastVortexState();
             MultiplayerCore.socketManager.BroadcastPinState();
         }
     }

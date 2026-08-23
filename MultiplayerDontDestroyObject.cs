@@ -12,13 +12,29 @@ namespace Shapez2Multiplayer
         public static void RequestViewportJump(double2 position)
         {
             PendingViewportJump = position;
-            FramesAfterMenuClosed = 8;
+            // HUDPauseMenu.Hide and the camera controller both write to the
+            // viewport during the close transition. Keep the requested position
+            // authoritative until that transition and its easing have finished.
+            FramesAfterMenuClosed = 120;
             MaximumPendingFrames = 600;
+        }
+
+        public static bool TryGetPendingViewportJump(out double2 position)
+        {
+            if (PendingViewportJump.HasValue)
+            {
+                position = PendingViewportJump.Value;
+                return true;
+            }
+
+            position = default;
+            return false;
         }
 
         public void Update()
         {
             MultiplayerCore.Update();
+            Packets.UpdateBuildingConfigurationPacket.ProcessPendingConfigurations();
         }
 
         public void LateUpdate()
@@ -28,9 +44,8 @@ namespace Shapez2Multiplayer
                 return;
             }
 
-            // The pause menu and camera input controller can both restore the
-            // position they cached before the click. Reapply after all ordinary
-            // camera updates and for a few frames after the menu has closed.
+            // This also covers frames where no competing Position setter ran and
+            // makes the resulting camera transform update immediately.
             Shapez2Multiplayer.GameSessionOrchestrator.Viewport.Position = PendingViewportJump.Value;
             MaximumPendingFrames--;
             if (MaximumPendingFrames <= 0)

@@ -21,7 +21,23 @@ While connected, open the pause menu and press `JUMP` beside a player to center
 the map on their latest cursor position. The queued jump is retained while the
 menu is open and applied again as gameplay resumes.
 
-Currently does not sync belt, pipe and logic states, however all buildings and research systems are synced so the game should naturally stay mostly synced
+This fork explicitly sends gameplay mutations reliably and in order. Client
+player actions receive host acknowledgements, are relayed to other players only
+after host validation, and trigger repair snapshots when rejected or timed out.
+Research, operator jobs/levels, vortex totals, pins, and waypoints use repeating
+host-authoritative snapshots. A watchdog requests a targeted replacement if one
+stops arriving or fails to converge. The multiplayer pause menu also includes a
+`RESYNC` button for an immediate repair request. A low-frequency world topology
+fingerprint detects persistent building/placement divergence and tells the
+affected client to reconnect instead of allowing a silent bad session to continue.
+
+Belt, pipe, train movement, and logic simulation internals are still simulated
+by the game on every machine; the mod does not serialize those enormous runtime
+graphs every tick. Their building placement/configuration commands are reliable,
+and vortex totals produced by belts or trains are repaired from the host every
+half second. If the actual world topology has already diverged, reconnecting is
+still the safe full-world recovery because loading a replacement save into an
+active session is not supported safely by Shapez 2's session orchestrator.
 
 Please report any issues you find
 
@@ -63,7 +79,7 @@ ENet libraries compiled from https://github.com/nxrighthere/ENet-CSharp
    The project writes the complete local mod directly to
    `%SPZ2_PERSISTENT%\mods\Shapez2Multiplayer`.
 7. Start shapez 2, open the Mods screen, enable the local
-   Shapez2Multiplayer v1.2.0-local.8 entry and its dependencies, then restart
+   Shapez2Multiplayer v1.2.0-local.11 entry and its dependencies, then restart
    when prompted. Repeat the same source/build steps on the other PC, or copy
    the completed `%SPZ2_PERSISTENT%\mods\Shapez2Multiplayer` folder to the same
    location on that PC.

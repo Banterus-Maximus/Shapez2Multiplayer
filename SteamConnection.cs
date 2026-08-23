@@ -35,7 +35,7 @@ namespace Shapez2Multiplayer
                 ChunkedPacket.Send(compressed, this, packet);
                 return true;
             }
-            var result = Connection.SendMessage(compressed);
+            var result = Connection.SendMessage(compressed, PacketDelivery.IsReliable(packet) ? SendType.Reliable : SendType.Unreliable);
             if (result != Steamworks.Result.OK)
             {
                 Shapez2Multiplayer.logger.Warning.Log($"Failed to send steam packet with error {result}");

@@ -55,6 +55,7 @@ namespace Shapez2Multiplayer.Packets
             // they receive the native unlock sequence without duplicating rewards.
             research.PlayerLevel.GrantPlayerLevel();
             MultiplayerCore.socketManager.BroadcastResearchState();
+            MultiplayerCore.socketManager.BroadcastVortexState();
             MultiplayerCore.socketManager.BroadcastPinState();
         }
     }

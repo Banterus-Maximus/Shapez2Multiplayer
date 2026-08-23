@@ -225,6 +225,15 @@ namespace Shapez2Multiplayer
             ReportIssueButtonRectTransform.anchorMax = new Vector2(1, 0);
             ReportIssueButtonRectTransform.offsetMin = new Vector2(10, 20);
             ReportIssueButtonRectTransform.offsetMax = new Vector2(-20, 80);
+            HUDButton ResyncButton = UIFactory.AddButton(hudMultiplayerPausePanel.transform, hudMultiplayerPausePanel, secondary: true);
+            ResyncButton.name = "ResyncButton";
+            RectTransform ResyncButtonRectTransform = ResyncButton.GetComponent<RectTransform>();
+            ResyncButtonRectTransform.anchorMin = new Vector2(1f / 3f, 0);
+            ResyncButtonRectTransform.anchorMax = new Vector2(2f / 3f, 0);
+            ResyncButtonRectTransform.offsetMin = new Vector2(10, 20);
+            ResyncButtonRectTransform.offsetMax = new Vector2(-10, 80);
+            InviteButtonRectTransform.anchorMax = new Vector2(1f / 3f, 0);
+            ReportIssueButtonRectTransform.anchorMin = new Vector2(2f / 3f, 0);
             HUDScrollContainer hudScrollContainer = UIFactory.AddScrollContainer(hudMultiplayerPausePanel.transform, hudMultiplayerPausePanel);
             UIFactory.AddDivider(hudScrollContainer.transform, false).name = "Divider Top";
             UIFactory.AddDivider(hudScrollContainer.transform, true).name = "Divider Bottom";
@@ -692,6 +701,21 @@ namespace Shapez2Multiplayer
         {
             return !MultiplayerCore.Client;
         }
+
+        [HarmonyPatch(typeof(Viewport), nameof(Viewport.Position), MethodType.Setter)]
+        [HarmonyPrefix]
+        public static void ViewportPositionSetterPrefix(ref double2 __0)
+        {
+            // HUDPauseMenu.Hide restores the position from before the menu was
+            // opened, and CameraController movement handlers can write again in
+            // the same frame. During a player jump, redirect every competing
+            // write to the requested destination until the close easing ends.
+            if (MultiplayerDontDestroyObject.TryGetPendingViewportJump(out var position))
+            {
+                __0 = position;
+            }
+        }
+
         [HarmonyPatch(typeof(ResearchPlayerLevelGoalManager), nameof(ResearchPlayerLevelGoalManager.TryLevelUp), new Type[] { typeof(PlayerLevelGoalId) })]
         [HarmonyPrefix]
         public static bool ResearchPlayerLevelGoalManagerTryLevelUpPrefix(ResearchPlayerLevelGoalManager __instance, PlayerLevelGoalId __0, ref bool __result)
@@ -738,10 +762,12 @@ namespace Shapez2Multiplayer
         {
             public static IEnumerable<MethodBase> TargetMethods()
             {
-                // Patch every Add overload so a game update cannot bypass host
-                // authority merely by introducing a new delivery batch shape.
+                // Train cargo is credited through batch-oriented Add* methods in
+                // newer game builds. Patch the whole mutation family rather than
+                // only methods named exactly Add, otherwise a client train can
+                // alter storage without running the normal goal update path.
                 return AccessTools.GetDeclaredMethods(typeof(ResearchShapeStorage))
-                    .Where(method => method.Name == nameof(ResearchShapeStorage.Add));
+                    .Where(method => method.Name.StartsWith(nameof(ResearchShapeStorage.Add), StringComparison.Ordinal));
             }
 
             [HarmonyPrefix]

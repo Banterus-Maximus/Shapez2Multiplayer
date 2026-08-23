@@ -39,6 +39,14 @@ namespace Shapez2Multiplayer.Packets
 
         public void Handle(IConnection? connection, InfoConnection? routedFrom = null)
         {
+            if (Packet is PlayerActionPacket)
+            {
+                // PlayerActionPacket validates on the host before doing its own
+                // relay. Forwarding here first would let peers apply a rejected map
+                // mutation and is a permanent-desync path.
+                Packet.Handle(connection);
+                return;
+            }
             MultiplayerCore.socketManager.SendToAllExcept(Packet, connection);
             Packet.Handle(connection);
         }

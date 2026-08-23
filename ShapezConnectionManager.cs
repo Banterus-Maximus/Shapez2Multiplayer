@@ -76,15 +76,24 @@ namespace Shapez2Multiplayer
         public void OnMessage(byte[] data)
         {
             var compressedLength = data.Length;
-            data = LZ4Pickler.Unpickle(data);
+            try
+            {
+                data = LZ4Pickler.Unpickle(data);
 #if DEBUG
-            Shapez2Multiplayer.logger.Info?.Log($"Recieved Data Of Length: {data.Length}, Compressed {compressedLength}");
+                Shapez2Multiplayer.logger.Info?.Log($"Recieved Data Of Length: {data.Length}, Compressed {compressedLength}");
 #endif
-            var packet = PacketExtensions.Decode(data, out uint? from);
+                var packet = PacketExtensions.Decode(data, out uint? from);
 
-            InfoConnection? fromInfo = null;
-            if (from.HasValue) if (ConnectionsDict.TryGetValue(from.Value, out InfoConnection c)) fromInfo = c;
-            packet.Handle(null, fromInfo);
+                InfoConnection? fromInfo = null;
+                if (from.HasValue) if (ConnectionsDict.TryGetValue(from.Value, out InfoConnection c)) fromInfo = c;
+                packet.Handle(null, fromInfo);
+            }
+            catch (Exception ex)
+            {
+                Shapez2Multiplayer.logger.Warning?.Log($"Rejected malformed, incompatible, or unapplicable host packet ({compressedLength} compressed bytes).");
+                Shapez2Multiplayer.logger.Warning?.LogException(ex);
+                MultiplayerSynchronization.RequestRepair(SyncSubsystem.All, "host packet decode/apply failure");
+            }
         }
         public bool SendToAll(IPacket packet)
         {
@@ -92,6 +101,10 @@ namespace Shapez2Multiplayer
             if (encoded == null) return true;
             var type = PacketExtensions.GetFromType(packet.GetType());
             var ret = ConnectionManager.Connection.Send(encoded, type);
+            if (ret && packet is PlayerActionPacket playerActionPacket)
+            {
+                MultiplayerSynchronization.TrackOutgoingAction(playerActionPacket.CommandId);
+            }
             if (!ret) Shapez2Multiplayer.logger.Warning.Log($"Dropped packet {packet.GetType().Name} because send failed");
             return ret;
         }
@@ -102,6 +115,10 @@ namespace Shapez2Multiplayer
             var type = PacketExtensions.GetFromType(packet.GetType());
             if (packet is SendToAllPacket sendToAllPacket) type = PacketExtensions.GetFromType(sendToAllPacket.Packet.GetType());
             var ret = ConnectionManager.Connection.Send(encoded, type);
+            if (ret && packet is PlayerActionPacket playerActionPacket)
+            {
+                MultiplayerSynchronization.TrackOutgoingAction(playerActionPacket.CommandId);
+            }
             if (!ret) Shapez2Multiplayer.logger.Warning.Log($"Dropped packet {packet.GetType().Name} because send failed");
             return ret;
         }
@@ -139,6 +156,7 @@ namespace Shapez2Multiplayer
         bool? LastViewportShowAllIslandLayers;
         public void Update()
         {
+            MultiplayerSynchronization.MonitorClientSnapshots();
             MassSelectionsTimer += Time.deltaTime;
             if (MassSelectionsTimer >= SYNC_MASS_SELECTIONS_TIME && Shapez2Multiplayer.GameSessionOrchestrator != null)
             {

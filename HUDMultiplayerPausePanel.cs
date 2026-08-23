@@ -1,5 +1,6 @@
 ﻿using Core.Dependency;
 using Core.Localization;
+using Shapez2Multiplayer.Packets;
 using Shapez2UILib;
 using Steamworks;
 using System.Collections.Generic;
@@ -26,8 +27,11 @@ namespace Shapez2Multiplayer
             ReportIssueButton = transform.GetChild(3).GetComponent<HUDButton>();
             ReportIssueButton.Text = "multiplayer.report-issue".T();
             ReportIssueButton.OnClick.AddListener(ReportIssue);
+            ResyncButton = transform.GetChild(4).GetComponent<HUDButton>();
+            ResyncButton.Text = "multiplayer.resync".T();
+            ResyncButton.OnClick.AddListener(RequestResync);
             //HostButton.transform.GetChild(0).GetComponent<Image>().sprite = Shapez2Multiplayer.HUDButtonBase;
-            UIScrollContainer = transform.GetChild(4).GetComponent<HUDScrollContainer>();
+            UIScrollContainer = transform.GetChild(5).GetComponent<HUDScrollContainer>();
             ScrollRect = UIScrollContainer.GetComponent<ScrollRect>();
             instance = this;
             if (MultiplayerCore.Client)
@@ -46,7 +50,18 @@ namespace Shapez2Multiplayer
         }
         public static void ReportIssue()
         {
-            Application.OpenURL("https://github.com/Bknibb/Shapez2Multiplayer/issues");
+            Application.OpenURL("https://github.com/Banterus-Maximus/Shapez2Multiplayer/issues");
+        }
+        public static void RequestResync()
+        {
+            if (MultiplayerCore.Hosting)
+            {
+                MultiplayerCore.socketManager?.SendAuthoritativeStateToAll(SyncSubsystem.All);
+            }
+            else
+            {
+                MultiplayerSynchronization.RequestRepair(SyncSubsystem.All, "manual multiplayer menu request", bypassCooldown: true);
+            }
         }
         public void AddPlayer(IConnection connection)
         {
@@ -150,6 +165,7 @@ namespace Shapez2Multiplayer
             HostButton.Interactable = !MultiplayerCore.InLobby || MultiplayerCore.Hosting;
             HostButton.Text = MultiplayerCore.InLobby && !MultiplayerCore.Hosting ? "multiplayer.inlobby".T() : MultiplayerCore.Hosting ? "multiplayer.stophosting".T() : "multiplayer.host".T();
             InviteButton.Interactable = MultiplayerCore.Hosting;
+            ResyncButton.Interactable = MultiplayerCore.InLobby;
         }
         public void ToggleHosting()
         {
@@ -165,6 +181,7 @@ namespace Shapez2Multiplayer
         private HUDButton HostButton;
         private HUDButton InviteButton;
         private HUDButton ReportIssueButton;
+        private HUDButton ResyncButton;
         private HUDScrollContainer UIScrollContainer;
         private ScrollRect ScrollRect;
     }

@@ -78,6 +78,10 @@ namespace Shapez2Multiplayer.Packets
             {
                 MultiplayerSynchronization.MarkPinRevisionApplied(Revision);
             }
+            else
+            {
+                MultiplayerSynchronization.RequestRepair(SyncSubsystem.Pins, $"pin snapshot {Revision} did not converge");
+            }
         }
     }
 }

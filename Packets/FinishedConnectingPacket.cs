@@ -35,9 +35,7 @@ namespace Shapez2Multiplayer.Packets
             // The save is a point-in-time snapshot. Send the current authoritative
             // state again after the client's load has finished, then periodic
             // snapshots keep it repaired for the rest of the session.
-            MultiplayerCore.socketManager.BroadcastResearchState();
-            MultiplayerCore.socketManager.BroadcastVortexState();
-            MultiplayerCore.socketManager.BroadcastPinState();
+            MultiplayerCore.socketManager.SendAuthoritativeState(connection, SyncSubsystem.All);
             MultiplayerCore.socketManager.SynchronizePauseState();
             if (MultiplayerCore.socketManager.Connecting.Count == 0)
             {

@@ -93,6 +93,7 @@ namespace Shapez2Multiplayer.Packets
                 .Distinct()
                 .ToList();
             var previousApplyState = MultiplayerSynchronization.ApplyingAuthoritativeResearchState;
+            var converged = true;
             MultiplayerSynchronization.ApplyingAuthoritativeResearchState = true;
             try
             {
@@ -104,6 +105,7 @@ namespace Shapez2Multiplayer.Packets
                         if (serializedTarget < 0)
                         {
                             Shapez2Multiplayer.logger.Warning?.Log($"Ignored invalid negative vortex total for shape {shapeKey}.");
+                            converged = false;
                             continue;
                         }
 
@@ -117,13 +119,14 @@ namespace Shapez2Multiplayer.Packets
                         else if (current > target && !research.ShapeStorage.TryTake(shapeId, current - target))
                         {
                             Shapez2Multiplayer.logger.Warning?.Log($"Failed to reduce vortex total for shape {shapeKey} from {current} to {target}.");
+                            converged = false;
                             continue;
                         }
-
                         var reconciled = research.ShapeStorage.GetAmount(shapeId);
                         if (reconciled != target)
                         {
                             Shapez2Multiplayer.logger.Warning?.Log($"Vortex total for shape {shapeKey} remained {reconciled} after applying host total {target}.");
+                            converged = false;
                         }
                     }
                     catch (System.Exception ex)
@@ -132,10 +135,24 @@ namespace Shapez2Multiplayer.Packets
                         // all other vortex totals in this snapshot from applying.
                         Shapez2Multiplayer.logger.Warning?.Log($"Failed to reconcile vortex shape {shapeKey} in revision {Revision}; continuing with the remaining shapes.");
                         Shapez2Multiplayer.logger.Warning?.LogException(ex);
+                        converged = false;
                     }
                 }
 
-                MultiplayerSynchronization.MarkVortexRevisionApplied(Revision);
+                // Goal rows cache their displayed progress and eligibility. A
+                // train batch can leave the client's numeric storage equal to the
+                // host before this packet arrives, so refresh even when no local
+                // Add/TryTake was necessary during reconciliation.
+                research.PlayerLevelGoals._OnChanged.Invoke();
+
+                if (converged)
+                {
+                    MultiplayerSynchronization.MarkVortexRevisionApplied(Revision);
+                }
+                else
+                {
+                    MultiplayerSynchronization.RequestRepair(SyncSubsystem.Vortex, $"vortex snapshot {Revision} did not converge");
+                }
             }
             finally
             {

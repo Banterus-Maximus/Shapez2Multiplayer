@@ -31,7 +31,11 @@ namespace Shapez2Multiplayer.Packets
         DeleteWaypoint,
         SyncPins,
         GrantPlayerLevel,
-        SyncVortexStorage
+        SyncVortexStorage,
+        SyncWaypoints,
+        RequestSync,
+        PlayerActionResult,
+        SyncWorldDigest
     }
     public static class PacketExtensions
     {
@@ -64,6 +68,10 @@ namespace Shapez2Multiplayer.Packets
                 Packet.SyncPins => typeof(SyncPinsPacket),
                 Packet.GrantPlayerLevel => typeof(GrantPlayerLevelPacket),
                 Packet.SyncVortexStorage => typeof(SyncVortexStoragePacket),
+                Packet.SyncWaypoints => typeof(SyncWaypointsPacket),
+                Packet.RequestSync => typeof(RequestSyncPacket),
+                Packet.PlayerActionResult => typeof(PlayerActionResultPacket),
+                Packet.SyncWorldDigest => typeof(SyncWorldDigestPacket),
                 _ => throw new ArgumentException("Invalid packet"),
             };
         public static Packet GetFromType(Type type)
@@ -94,6 +102,10 @@ namespace Shapez2Multiplayer.Packets
             else if (type == typeof(SyncPinsPacket)) return Packet.SyncPins;
             else if (type == typeof(GrantPlayerLevelPacket)) return Packet.GrantPlayerLevel;
             else if (type == typeof(SyncVortexStoragePacket)) return Packet.SyncVortexStorage;
+            else if (type == typeof(SyncWaypointsPacket)) return Packet.SyncWaypoints;
+            else if (type == typeof(RequestSyncPacket)) return Packet.RequestSync;
+            else if (type == typeof(PlayerActionResultPacket)) return Packet.PlayerActionResult;
+            else if (type == typeof(SyncWorldDigestPacket)) return Packet.SyncWorldDigest;
             throw new ArgumentException("Invalid packet type");
         }
         public static byte[]? Encode(IPacket packet, uint? from = null)

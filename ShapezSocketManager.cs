@@ -26,6 +26,9 @@ namespace Shapez2Multiplayer
         public Dictionary<uint, OtherPlayerEntityPlacementDrawer> PlayersDrawers = new Dictionary<uint, OtherPlayerEntityPlacementDrawer>();
         public Dictionary<uint, OtherPlayerHUDBuildingMassSelection> PlayersBuildingMassSelections = new Dictionary<uint, OtherPlayerHUDBuildingMassSelection>();
         public Dictionary<uint, OtherPlayerHUDIslandMassSelection> PlayersIslandMassSelections = new Dictionary<uint, OtherPlayerHUDIslandMassSelection>();
+        private readonly Dictionary<uint, ulong> LastAcceptedActionCommand = new Dictionary<uint, ulong>();
+        private readonly Dictionary<uint, bool> LastActionCommandResult = new Dictionary<uint, bool>();
+        private readonly Dictionary<uint, float> LastSyncRequestTime = new Dictionary<uint, float>();
         public static readonly List<Type> AlwaysAllowedToSend = new List<Type>()
         {
             typeof(SavegamePacket),
@@ -41,8 +44,17 @@ namespace Shapez2Multiplayer
             typeof(FinishedConnectingPacket),
             typeof(PlayerInfoPacket),
             typeof(ChunkedPacket),
-            typeof(ChunkReceivedPacket)
+            typeof(ChunkReceivedPacket),
+            typeof(RequestSyncPacket)
         };
+        private static bool IsAuthoritativeSnapshot(IPacket packet)
+        {
+            return packet is SyncResearchManagerPacket ||
+                packet is SyncVortexStoragePacket ||
+                packet is SyncPinsPacket ||
+                packet is SyncWaypointsPacket ||
+                packet is SyncWorldDigestPacket;
+        }
         public ShapezSocketManager(ISocketManager socketManager)
         {
             socketManager.ConnectedEvent += OnConnected;
@@ -84,6 +96,9 @@ namespace Shapez2Multiplayer
             Connecting.Add(connection);
             SynchronizePauseState();
             Shapez2Multiplayer.YetToRecieveSavegame.Add(connection);
+            LastAcceptedActionCommand[connection.UniversalId] = 0;
+            LastActionCommandResult[connection.UniversalId] = false;
+            LastSyncRequestTime[connection.UniversalId] = float.NegativeInfinity;
             if (Shapez2Multiplayer.YetToRecieveSavegame.Count == 1) Shapez2Multiplayer.GameSessionOrchestrator.TrySaveCurrentAsync();
         }
 
@@ -102,6 +117,9 @@ namespace Shapez2Multiplayer
             PlayersBuildingMassSelections.Remove(connection.UniversalId);
             PlayersIslandMassSelections.Remove(connection.UniversalId);
             HUDMultiplayerCursors.Instance.RemoveCursor(connection);
+            LastAcceptedActionCommand.Remove(connection.UniversalId);
+            LastActionCommandResult.Remove(connection.UniversalId);
+            LastSyncRequestTime.Remove(connection.UniversalId);
             SendToAll(new UpdateConnectionInfoPacket(new List<InfoConnection>(), new List<uint>() { connection.UniversalId }));
             if (Connecting.Remove(connection))
             {
@@ -122,20 +140,65 @@ namespace Shapez2Multiplayer
             connection.Close();
         }
 
+        public bool TryAcceptActionCommand(IConnection connection, ulong commandId, out bool previousResult)
+        {
+            LastAcceptedActionCommand.TryGetValue(connection.UniversalId, out var lastCommandId);
+            LastActionCommandResult.TryGetValue(connection.UniversalId, out previousResult);
+            if (commandId == 0 || commandId <= lastCommandId)
+            {
+                Shapez2Multiplayer.logger.Warning?.Log($"Ignored duplicate player action {commandId} from {connection.Name} (last accepted {lastCommandId}).");
+                return false;
+            }
+            if (lastCommandId != 0 && commandId != lastCommandId + 1)
+            {
+                Shapez2Multiplayer.logger.Warning?.Log($"Player action sequence gap from {connection.Name}: received {commandId} after {lastCommandId}.");
+            }
+            LastAcceptedActionCommand[connection.UniversalId] = commandId;
+            LastActionCommandResult[connection.UniversalId] = false;
+            return true;
+        }
+
+        public void RecordActionCommandResult(IConnection connection, bool accepted)
+        {
+            LastActionCommandResult[connection.UniversalId] = accepted;
+        }
+
+        public void HandleSyncRequest(IConnection connection, SyncSubsystem subsystems, string reason)
+        {
+            var now = Time.realtimeSinceStartup;
+            LastSyncRequestTime.TryGetValue(connection.UniversalId, out var lastRequestTime);
+            if (now - lastRequestTime < 1.0f)
+            {
+                Shapez2Multiplayer.logger.Warning?.Log($"Rate-limited repeated sync request from {connection.Name}.");
+                return;
+            }
+            LastSyncRequestTime[connection.UniversalId] = now;
+            Shapez2Multiplayer.logger.Info?.Log($"Sending {subsystems} repair snapshot to {connection.Name}. Reason: {reason}");
+            SendAuthoritativeState(connection, subsystems);
+        }
+
         public void OnMessage(IConnection connection, byte[] data)
         {
             var compressedLength = data.Length;
-            data = LZ4Pickler.Unpickle(data);
-#if DEBUG
-            Shapez2Multiplayer.logger.Info?.Log($"Recieved Data Of Length: {data.Length}, Compressed {compressedLength}");
-#endif
-            var packet = PacketExtensions.Decode(data);
-            if (Connecting.Count > 0 && !AlwaysAllowedToRecieve.Contains(packet.GetType()))
+            try
             {
-                BufferedRecievePackets.Add(new Tuple<IPacket, IConnection>(packet, connection));
-                return;
+                data = LZ4Pickler.Unpickle(data);
+#if DEBUG
+                Shapez2Multiplayer.logger.Info?.Log($"Recieved Data Of Length: {data.Length}, Compressed {compressedLength}");
+#endif
+                var packet = PacketExtensions.Decode(data);
+                if (Connecting.Count > 0 && !AlwaysAllowedToRecieve.Contains(packet.GetType()))
+                {
+                    BufferedRecievePackets.Add(new Tuple<IPacket, IConnection>(packet, connection));
+                    return;
+                }
+                packet.Handle(connection);
             }
-            packet.Handle(connection);
+            catch (Exception ex)
+            {
+                Shapez2Multiplayer.logger.Warning?.Log($"Rejected malformed or incompatible packet from {connection.Name} ({compressedLength} compressed bytes).");
+                Shapez2Multiplayer.logger.Warning?.LogException(ex);
+            }
         }
         public bool SendToAll(IPacket packet)
         {
@@ -144,7 +207,7 @@ namespace Shapez2Multiplayer
                 // Authoritative snapshots supersede older buffered snapshots. A
                 // slow savegame load must not produce a burst of dozens of stale
                 // one-second research packets when the session resumes.
-                if (packet is SyncResearchManagerPacket || packet is SyncVortexStoragePacket || packet is SyncPinsPacket)
+                if (IsAuthoritativeSnapshot(packet))
                 {
                     BufferedSendToAllPackets.RemoveAll(buffered => buffered.GetType() == packet.GetType());
                 }
@@ -225,6 +288,10 @@ namespace Shapez2Multiplayer
             if (!Connected.Contains(connection) && !Connecting.Contains(connection)) return;
             if (Connecting.Count > 0 && !AlwaysAllowedToSend.Contains(packet.GetType()))
             {
+                if (IsAuthoritativeSnapshot(packet))
+                {
+                    BufferedSendToPackets.RemoveAll(buffered => buffered.Item2 == connection && buffered.Item1.GetType() == packet.GetType());
+                }
                 BufferedSendToPackets.Add(new Tuple<IPacket, IConnection>(packet, connection));
                 return;
             }
@@ -238,6 +305,10 @@ namespace Shapez2Multiplayer
         {
             if (Connecting.Count > 0 && !AlwaysAllowedToSend.Contains(packet.GetType()))
             {
+                if (IsAuthoritativeSnapshot(packet))
+                {
+                    BufferedSendToListPackets.RemoveAll(buffered => buffered.Item1.GetType() == packet.GetType() && buffered.Item2.SequenceEqual(connections));
+                }
                 BufferedSendToListPackets.Add(new Tuple<IPacket, List<IConnection>>(packet, connections));
                 return;
             }
@@ -277,9 +348,13 @@ namespace Shapez2Multiplayer
         public float SyncResearchTimer = 0.0f;
         public float SyncVortexTimer = 0.0f;
         public float SyncPinsTimer = 0.0f;
+        public float SyncWaypointsTimer = 0.0f;
+        public float SyncWorldDigestTimer = 0.0f;
         private ulong ResearchRevision;
         private ulong VortexRevision;
         private ulong PinRevision;
+        private ulong WaypointRevision;
+        private ulong WorldDigestRevision;
         float MassSelectionsTimer = 0.0f;
         float SyncLobbyDataTimer = 0.0f;
         float SyncCursorTimer = 0.0f;
@@ -294,6 +369,8 @@ namespace Shapez2Multiplayer
         // cannot delay or invalidate delivered-shape reconciliation.
         const float SYNC_VORTEX_TIME = 0.5f;
         const float SYNC_PINS_TIME = 5.0f;
+        const float SYNC_WAYPOINTS_TIME = 5.0f;
+        const float SYNC_WORLD_DIGEST_TIME = 3.0f;
         const float SYNC_MASS_SELECTIONS_TIME = 1.0f;
         const float SYNC_LOBBY_DATA_TIME = 60.0f * 5f;
         const float SYNC_CURSOR_TIME = 0.1f;
@@ -304,25 +381,62 @@ namespace Shapez2Multiplayer
         bool? LastViewportShowAllBuildingLayers;
         bool? LastViewportShowAllIslandLayers;
 
-        public void BroadcastResearchState()
+        public void BroadcastResearchState(IConnection? target = null)
         {
-            SyncResearchTimer = 0.0f;
+            if (target == null) SyncResearchTimer = 0.0f;
             if (Shapez2Multiplayer.Research == null || Connected.Count == 0) return;
-            SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research, ++ResearchRevision));
+            var packet = new SyncResearchManagerPacket(Shapez2Multiplayer.Research, ++ResearchRevision);
+            if (target == null) SendToAll(packet); else SendTo(packet, target);
         }
 
-        public void BroadcastVortexState()
+        public void BroadcastVortexState(IConnection? target = null)
         {
-            SyncVortexTimer = 0.0f;
+            if (target == null) SyncVortexTimer = 0.0f;
             if (Shapez2Multiplayer.Research == null || Connected.Count == 0) return;
-            SendToAll(new SyncVortexStoragePacket(Shapez2Multiplayer.Research.ShapeStorage, ++VortexRevision));
+            var packet = new SyncVortexStoragePacket(Shapez2Multiplayer.Research.ShapeStorage, ++VortexRevision);
+            if (target == null) SendToAll(packet); else SendTo(packet, target);
         }
 
-        public void BroadcastPinState()
+        public void BroadcastPinState(IConnection? target = null)
         {
-            SyncPinsTimer = 0.0f;
+            if (target == null) SyncPinsTimer = 0.0f;
             if (Shapez2Multiplayer.GameSessionOrchestrator == null || Connected.Count == 0) return;
-            SendToAll(new SyncPinsPacket(++PinRevision));
+            var packet = new SyncPinsPacket(++PinRevision);
+            if (target == null) SendToAll(packet); else SendTo(packet, target);
+        }
+
+        public void BroadcastWaypointState(IConnection? target = null)
+        {
+            if (target == null) SyncWaypointsTimer = 0.0f;
+            if (Shapez2Multiplayer.PlayerWaypoints == null || Connected.Count == 0) return;
+            var packet = new SyncWaypointsPacket(++WaypointRevision);
+            if (target == null) SendToAll(packet); else SendTo(packet, target);
+        }
+
+        public void BroadcastWorldDigest(IConnection? target = null)
+        {
+            if (target == null) SyncWorldDigestTimer = 0.0f;
+            if (Shapez2Multiplayer.MapModel == null || Connected.Count == 0) return;
+            var packet = new SyncWorldDigestPacket(++WorldDigestRevision);
+            if (target == null) SendToAll(packet); else SendTo(packet, target);
+        }
+
+        public void SendAuthoritativeState(IConnection connection, SyncSubsystem subsystems)
+        {
+            if ((subsystems & SyncSubsystem.Research) != 0) BroadcastResearchState(connection);
+            if ((subsystems & SyncSubsystem.Vortex) != 0) BroadcastVortexState(connection);
+            if ((subsystems & SyncSubsystem.Pins) != 0) BroadcastPinState(connection);
+            if ((subsystems & SyncSubsystem.Waypoints) != 0) BroadcastWaypointState(connection);
+            if ((subsystems & SyncSubsystem.WorldDigest) != 0) BroadcastWorldDigest(connection);
+        }
+
+        public void SendAuthoritativeStateToAll(SyncSubsystem subsystems)
+        {
+            if ((subsystems & SyncSubsystem.Research) != 0) BroadcastResearchState();
+            if ((subsystems & SyncSubsystem.Vortex) != 0) BroadcastVortexState();
+            if ((subsystems & SyncSubsystem.Pins) != 0) BroadcastPinState();
+            if ((subsystems & SyncSubsystem.Waypoints) != 0) BroadcastWaypointState();
+            if ((subsystems & SyncSubsystem.WorldDigest) != 0) BroadcastWorldDigest();
         }
 
         public void SynchronizePauseState()
@@ -368,26 +482,36 @@ namespace Shapez2Multiplayer
             {
                 SyncPauseTimer = 0.0f;
             }
-            PingUpdateTimer += Time.deltaTime;
+            PingUpdateTimer += Time.unscaledDeltaTime;
             if (PingUpdateTimer >= PING_UPDATE_TIME)
             {
                 PingUpdateTimer = 0.0f;
                 SendToAll(new UpdateConnectionInfoPacket(Connected.Select(c => new InfoConnection(c)).ToList(), new List<uint>()));
             }
-            SyncResearchTimer += Time.deltaTime;
+            SyncResearchTimer += Time.unscaledDeltaTime;
             if (SyncResearchTimer >= SYNC_RESEARCH_TIME)
             {
                 BroadcastResearchState();
             }
-            SyncVortexTimer += Time.deltaTime;
+            SyncVortexTimer += Time.unscaledDeltaTime;
             if (SyncVortexTimer >= SYNC_VORTEX_TIME)
             {
                 BroadcastVortexState();
             }
-            SyncPinsTimer += Time.deltaTime;
+            SyncPinsTimer += Time.unscaledDeltaTime;
             if (SyncPinsTimer >= SYNC_PINS_TIME)
             {
                 BroadcastPinState();
+            }
+            SyncWaypointsTimer += Time.unscaledDeltaTime;
+            if (SyncWaypointsTimer >= SYNC_WAYPOINTS_TIME)
+            {
+                BroadcastWaypointState();
+            }
+            SyncWorldDigestTimer += Time.unscaledDeltaTime;
+            if (SyncWorldDigestTimer >= SYNC_WORLD_DIGEST_TIME)
+            {
+                BroadcastWorldDigest();
             }
             MassSelectionsTimer += Time.deltaTime;
             if (MassSelectionsTimer >= SYNC_MASS_SELECTIONS_TIME)
@@ -429,7 +553,15 @@ namespace Shapez2Multiplayer
             if (Connecting.Count > 0) return;
             foreach (var packet in BufferedRecievePackets)
             {
-                packet.Item1.Handle(packet.Item2);
+                try
+                {
+                    packet.Item1.Handle(packet.Item2);
+                }
+                catch (Exception ex)
+                {
+                    Shapez2Multiplayer.logger.Warning?.Log($"Failed to apply buffered {packet.Item1.GetType().Name} from {packet.Item2.Name}.");
+                    Shapez2Multiplayer.logger.Warning?.LogException(ex);
+                }
             }
             BufferedRecievePackets.Clear();
             foreach (var packet in BufferedSendToAllPackets)

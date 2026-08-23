@@ -167,13 +167,34 @@ namespace Shapez2Multiplayer.Packets
                 }
                 researchManager.PointStorage.TotalSpent = new ResearchPointCurrency(ResearchManagerSerializedData.PointCurrency.TotalSpent);
 
-                MultiplayerSynchronization.MarkResearchRevisionApplied(Revision);
-                MultiplayerSynchronization.SetAuthoritativePlayerLevel(targetPlayerLevel);
+                var reconciled = Encoding.SerializeResearchManager(researchManager);
+                var snapshotMatches = reconciled.ResearchProgress.UnlockedUpgradeIds
+                        .OrderBy(id => id).SequenceEqual(ResearchManagerSerializedData.ResearchProgress.UnlockedUpgradeIds.OrderBy(id => id)) &&
+                    reconciled.LinearUpgrades.UpgradeLevels.OrderBy(pair => pair.Key)
+                        .SequenceEqual(ResearchManagerSerializedData.LinearUpgrades.UpgradeLevels.OrderBy(pair => pair.Key)) &&
+                    reconciled.PlayerLevel.Level == ResearchManagerSerializedData.PlayerLevel.Level &&
+                    reconciled.PlayerLevelGoals.GoalLevels.OrderBy(pair => pair.Key)
+                        .SequenceEqual(ResearchManagerSerializedData.PlayerLevelGoals.GoalLevels.OrderBy(pair => pair.Key)) &&
+                    reconciled.BlueprintCurrency.BlueprintCurrency == ResearchManagerSerializedData.BlueprintCurrency.BlueprintCurrency &&
+                    reconciled.BlueprintCurrency.TotalAmountSpent == ResearchManagerSerializedData.BlueprintCurrency.TotalAmountSpent &&
+                    reconciled.PointCurrency.Points == ResearchManagerSerializedData.PointCurrency.Points &&
+                    reconciled.PointCurrency.TotalSpent == ResearchManagerSerializedData.PointCurrency.TotalSpent;
+                if (snapshotMatches)
+                {
+                    MultiplayerSynchronization.MarkResearchRevisionApplied(Revision);
+                    MultiplayerSynchronization.SetAuthoritativePlayerLevel(targetPlayerLevel);
+                }
+                else
+                {
+                    Shapez2Multiplayer.logger.Warning?.Log($"Research snapshot revision {Revision} did not converge exactly; requesting another copy.");
+                    MultiplayerSynchronization.RequestRepair(SyncSubsystem.Research, $"research snapshot {Revision} did not converge");
+                }
             }
             catch (System.Exception ex)
             {
                 Shapez2Multiplayer.logger.Warning?.Log($"Failed to apply authoritative research snapshot revision {Revision}.");
                 Shapez2Multiplayer.logger.Warning?.LogException(ex);
+                MultiplayerSynchronization.RequestRepair(SyncSubsystem.Research, $"research snapshot {Revision} failed to apply");
             }
             finally
             {

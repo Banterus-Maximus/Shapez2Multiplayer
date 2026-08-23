@@ -46,6 +46,10 @@ namespace Shapez2Multiplayer.Packets
             {
                 Shapez2Multiplayer.IgnoreWaypointEvents = previousIgnoreWaypointEvents;
             }
+            if (connection != null)
+            {
+                MultiplayerCore.socketManager?.BroadcastWaypointState();
+            }
         }
     }
 }
