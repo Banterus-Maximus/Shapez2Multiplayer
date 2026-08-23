@@ -36,6 +36,7 @@ namespace Shapez2Multiplayer.Packets
             // state again after the client's load has finished, then periodic
             // snapshots keep it repaired for the rest of the session.
             MultiplayerCore.socketManager.BroadcastResearchState();
+            MultiplayerCore.socketManager.BroadcastVortexState();
             MultiplayerCore.socketManager.BroadcastPinState();
             MultiplayerCore.socketManager.SynchronizePauseState();
             if (MultiplayerCore.socketManager.Connecting.Count == 0)

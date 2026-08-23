@@ -1116,7 +1116,8 @@ namespace Shapez2Multiplayer
             return new ResearchManager.SerializedData()
             {
                 ResearchProgress = researchManager.Progress.Serialize(),
-                Shapes = researchManager.ShapeStorage.Serialize(),
+                // Vortex totals use their own fault-isolated authoritative packet.
+                Shapes = new ResearchShapeStorage.SerializedData(),
                 BlueprintCurrency = researchManager.BlueprintCurrencyManager.Serialize(),
                 PointCurrency = researchManager.PointStorage.Serialize(),
                 LinearUpgrades = researchManager.LinearUpgradeManager.Serialize(),
@@ -1127,7 +1128,6 @@ namespace Shapez2Multiplayer
         public static void Encode(ResearchManager.SerializedData serializedData, Stream stream)
         {
             Encode(serializedData.ResearchProgress, stream);
-            Encode(serializedData.Shapes, stream);
             Encode(serializedData.BlueprintCurrency, stream);
             Encode(serializedData.PointCurrency, stream);
             Encode(serializedData.LinearUpgrades, stream);
@@ -1138,7 +1138,7 @@ namespace Shapez2Multiplayer
         {
             var serializedData = new ResearchManager.SerializedData();
             serializedData.ResearchProgress = DecodeResearchUnlockProgressManagerSerializedData(stream);
-            serializedData.Shapes = DecodeResearchShapeStorageSerializedData(stream);
+            serializedData.Shapes = new ResearchShapeStorage.SerializedData();
             serializedData.BlueprintCurrency = DecodeBlueprintCurrencyManagerSerializedData(stream);
             serializedData.PointCurrency = DecodeResearchPointStorageSerializedData(stream);
             serializedData.LinearUpgrades = DecodeResearchLinearUpgradeManagerSerializedData(stream);

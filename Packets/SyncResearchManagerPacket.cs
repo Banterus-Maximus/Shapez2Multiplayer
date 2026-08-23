@@ -1,12 +1,8 @@
 ﻿using Core.Events;
 using Core.Localization;
 using Game.Core.Research;
-using HarmonyLib;
-using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 
 namespace Shapez2Multiplayer.Packets
 {
@@ -74,36 +70,6 @@ namespace Shapez2Multiplayer.Packets
                         researchManager.UnlockManager._OnPlayerAboutToUnlockResearch.Invoke(upgrade);
                         researchManager.UnlockManager.TryUnlock(upgrade, true);
                         researchManager.UnlockManager._OnResearchManuallyUnlockedByPlayer.Invoke(upgrade);
-                    }
-                }
-
-                // Reconcile the union of host and client keys. The old code only
-                // visited keys present in the host packet, leaving a client's stale
-                // non-zero vortex totals untouched whenever the host had zero.
-                var shapeIdManager = researchManager.ShapeStorage.ShapeIdManager;
-                var localStoredShapes = researchManager.ShapeStorage.Serialize().StoredShapes;
-                var allShapeKeys = localStoredShapes.Keys
-                    .Concat(ResearchManagerSerializedData.Shapes.StoredShapes.Keys)
-                    .Distinct()
-                    .ToList();
-                foreach (var shapeKey in allShapeKeys)
-                {
-                    var shapeId = shapeIdManager.Resolve(shapeKey);
-                    var current = researchManager.ShapeStorage.GetAmount(shapeId);
-                    var targetSerialized = ResearchManagerSerializedData.Shapes.StoredShapes.GetValueOrDefault(shapeKey, 0);
-                    if (targetSerialized < 0)
-                    {
-                        Shapez2Multiplayer.logger.Warning?.Log($"Ignored invalid negative vortex total for shape {shapeKey}.");
-                        continue;
-                    }
-                    var target = (ulong)targetSerialized;
-                    if (current < target)
-                    {
-                        researchManager.ShapeStorage.Add(shapeId, target - current);
-                    }
-                    else if (current > target && !researchManager.ShapeStorage.TryTake(shapeId, current - target))
-                    {
-                        Shapez2Multiplayer.logger.Warning?.Log($"Failed to reconcile vortex total for shape {shapeKey}.");
                     }
                 }
 

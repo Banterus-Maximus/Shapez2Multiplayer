@@ -18,6 +18,7 @@ namespace Shapez2Multiplayer
     {
         public static ulong LastResearchRevision { get; private set; }
         public static ulong LastPinRevision { get; private set; }
+        public static ulong LastVortexRevision { get; private set; }
         public static bool ApplyingAuthoritativeResearchState { get; set; }
         private static readonly HashSet<string> PendingJobRequests = new HashSet<string>();
         private static readonly HashSet<int> PendingPlayerLevelRequests = new HashSet<int>();
@@ -28,6 +29,7 @@ namespace Shapez2Multiplayer
         {
             LastResearchRevision = 0;
             LastPinRevision = 0;
+            LastVortexRevision = 0;
             ApplyingAuthoritativeResearchState = false;
             PendingJobRequests.Clear();
             PendingPlayerLevelRequests.Clear();
@@ -39,6 +41,16 @@ namespace Shapez2Multiplayer
         public static bool ShouldApplyResearchRevision(ulong revision)
         {
             return revision > LastResearchRevision;
+        }
+
+        public static bool ShouldApplyVortexRevision(ulong revision)
+        {
+            return revision > LastVortexRevision;
+        }
+
+        public static void MarkVortexRevisionApplied(ulong revision)
+        {
+            LastVortexRevision = revision;
         }
 
         public static void MarkResearchRevisionApplied(ulong revision)

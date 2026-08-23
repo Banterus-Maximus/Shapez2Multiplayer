@@ -144,7 +144,7 @@ namespace Shapez2Multiplayer
                 // Authoritative snapshots supersede older buffered snapshots. A
                 // slow savegame load must not produce a burst of dozens of stale
                 // one-second research packets when the session resumes.
-                if (packet is SyncResearchManagerPacket || packet is SyncPinsPacket)
+                if (packet is SyncResearchManagerPacket || packet is SyncVortexStoragePacket || packet is SyncPinsPacket)
                 {
                     BufferedSendToAllPackets.RemoveAll(buffered => buffered.GetType() == packet.GetType());
                 }
@@ -275,8 +275,10 @@ namespace Shapez2Multiplayer
         public float PingUpdateTimer = 0.0f;
         public float SyncPauseTimer = 0.0f;
         public float SyncResearchTimer = 0.0f;
+        public float SyncVortexTimer = 0.0f;
         public float SyncPinsTimer = 0.0f;
         private ulong ResearchRevision;
+        private ulong VortexRevision;
         private ulong PinRevision;
         float MassSelectionsTimer = 0.0f;
         float SyncLobbyDataTimer = 0.0f;
@@ -286,10 +288,11 @@ namespace Shapez2Multiplayer
         // allowed to change simulation speed themselves. Repeating this state
         // repairs a packet lost during the savegame/orchestrator transition.
         const float SYNC_PAUSE_TIME = 1.0f;
-        // Vortex delivery totals and research credits change without going through
-        // player actions. A short authoritative cadence keeps those simulation
-        // products converged while event-driven broadcasts handle purchases/jobs.
+        // Research credits change without always going through player actions.
         const float SYNC_RESEARCH_TIME = 1.0f;
+        // Vortex totals have a separate cadence so unrelated research handling
+        // cannot delay or invalidate delivered-shape reconciliation.
+        const float SYNC_VORTEX_TIME = 0.5f;
         const float SYNC_PINS_TIME = 5.0f;
         const float SYNC_MASS_SELECTIONS_TIME = 1.0f;
         const float SYNC_LOBBY_DATA_TIME = 60.0f * 5f;
@@ -306,6 +309,13 @@ namespace Shapez2Multiplayer
             SyncResearchTimer = 0.0f;
             if (Shapez2Multiplayer.Research == null || Connected.Count == 0) return;
             SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research, ++ResearchRevision));
+        }
+
+        public void BroadcastVortexState()
+        {
+            SyncVortexTimer = 0.0f;
+            if (Shapez2Multiplayer.Research == null || Connected.Count == 0) return;
+            SendToAll(new SyncVortexStoragePacket(Shapez2Multiplayer.Research.ShapeStorage, ++VortexRevision));
         }
 
         public void BroadcastPinState()
@@ -368,6 +378,11 @@ namespace Shapez2Multiplayer
             if (SyncResearchTimer >= SYNC_RESEARCH_TIME)
             {
                 BroadcastResearchState();
+            }
+            SyncVortexTimer += Time.deltaTime;
+            if (SyncVortexTimer >= SYNC_VORTEX_TIME)
+            {
+                BroadcastVortexState();
             }
             SyncPinsTimer += Time.deltaTime;
             if (SyncPinsTimer >= SYNC_PINS_TIME)
