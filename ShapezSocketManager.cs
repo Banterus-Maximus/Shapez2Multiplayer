@@ -82,11 +82,7 @@ namespace Shapez2Multiplayer
             if (!connection.Send(PacketExtensions.Encode(new UniversalIDPacket(connection.UniversalId)), Packets.Packet.UniversalID)) Shapez2Multiplayer.logger.Warning.Log($"Failed to send UniversalId Packet");
             SendToAll(new UpdateConnectionInfoPacket(new List<InfoConnection>() { new InfoConnection(connection) }, new List<uint>()));
             Connecting.Add(connection);
-            if (Connecting.Count >= 1)
-            {
-                SendToAllExcept(new PausePacket(true, new CombinedText("multiplayer.paused-dialog.description-waitingforplayer".T(), new RawText("\n"+string.Join(", ", Connecting.Select(c => c.Name))))), Connecting);
-                new PausePacket(true, new CombinedText("multiplayer.paused-dialog.description-waitingforplayer".T(), new RawText("\n" + string.Join(", ", Connecting.Select(c => c.Name))))).Handle(null);
-            }
+            SynchronizePauseState();
             Shapez2Multiplayer.YetToRecieveSavegame.Add(connection);
             if (Shapez2Multiplayer.YetToRecieveSavegame.Count == 1) Shapez2Multiplayer.GameSessionOrchestrator.TrySaveCurrentAsync();
         }
@@ -107,10 +103,9 @@ namespace Shapez2Multiplayer
             PlayersIslandMassSelections.Remove(connection.UniversalId);
             HUDMultiplayerCursors.Instance.RemoveCursor(connection);
             SendToAll(new UpdateConnectionInfoPacket(new List<InfoConnection>(), new List<uint>() { connection.UniversalId }));
-            if (Connecting.Remove(connection) && Connecting.Count == 0)
+            if (Connecting.Remove(connection))
             {
-                SendToAllExcept(new PausePacket(false), connection);
-                new PausePacket(false).Handle(null);
+                SynchronizePauseState();
             }
             Shapez2Multiplayer.HUD.Events.ShowNotification.Invoke(new HUDNotificationData(HUDNotificationType.Info, "multiplayer.player-lost-connection".T().Bind("player-name", new RawText(connection.Name))));
         }
@@ -278,6 +273,7 @@ namespace Shapez2Multiplayer
             SendToAll(new PlayerInteractionStateChangedPacket(Shapez2Multiplayer.GameSessionOrchestrator.LocalPlayer.InteractionState.State));
         }
         public float PingUpdateTimer = 0.0f;
+        public float SyncPauseTimer = 0.0f;
         public float SyncResearchTimer = 0.0f;
         public float SyncPinsTimer = 0.0f;
         private ulong ResearchRevision;
@@ -286,6 +282,10 @@ namespace Shapez2Multiplayer
         float SyncLobbyDataTimer = 0.0f;
         float SyncCursorTimer = 0.0f;
         const float PING_UPDATE_TIME = 5.0f;
+        // Pause packets are small but essential: clients are intentionally not
+        // allowed to change simulation speed themselves. Repeating this state
+        // repairs a packet lost during the savegame/orchestrator transition.
+        const float SYNC_PAUSE_TIME = 1.0f;
         // Vortex delivery totals and research credits change without going through
         // player actions. A short authoritative cadence keeps those simulation
         // products converged while event-driven broadcasts handle purchases/jobs.
@@ -314,6 +314,28 @@ namespace Shapez2Multiplayer
             if (Shapez2Multiplayer.GameSessionOrchestrator == null || Connected.Count == 0) return;
             SendToAll(new SyncPinsPacket(++PinRevision));
         }
+
+        public void SynchronizePauseState()
+        {
+            SyncPauseTimer = 0.0f;
+            PausePacket packet;
+            if (Connecting.Count == 0)
+            {
+                packet = new PausePacket(false);
+                SendToAll(packet);
+            }
+            else
+            {
+                packet = new PausePacket(true, new CombinedText(
+                    "multiplayer.paused-dialog.description-waitingforplayer".T(),
+                    new RawText("\n" + string.Join(", ", Connecting.Select(c => c.Name)))));
+                // A client still loading the save has no simulation manager yet.
+                // Send only to the host and players whose load has completed.
+                SendToAllExcept(packet, Connecting);
+            }
+            packet.Handle(null);
+        }
+
         public void Update()
         {
             lock (_socketManagers)
@@ -322,6 +344,19 @@ namespace Shapez2Multiplayer
                 {
                     if (sm.Valid) sm.Update();
                 }
+            }
+            if (Connected.Count > 0)
+            {
+                // Simulation pause can stop scaled delta time, so use unscaled time.
+                SyncPauseTimer += Time.unscaledDeltaTime;
+                if (SyncPauseTimer >= SYNC_PAUSE_TIME)
+                {
+                    SynchronizePauseState();
+                }
+            }
+            else
+            {
+                SyncPauseTimer = 0.0f;
             }
             PingUpdateTimer += Time.deltaTime;
             if (PingUpdateTimer >= PING_UPDATE_TIME)

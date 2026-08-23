@@ -1,7 +1,5 @@
-﻿using Core.Localization;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace Shapez2Multiplayer.Packets
 {
@@ -35,8 +33,7 @@ namespace Shapez2Multiplayer.Packets
                     MultiplayerCore.socketManager.SendToAll(new UpdateConnectionInfoPacket(new List<InfoConnection>() { new InfoConnection(eNetConnection) }, new List<uint>()));
                     if (MultiplayerCore.socketManager.Connecting.Contains(eNetConnection))
                     {
-                        MultiplayerCore.socketManager.SendToAllExcept(new PausePacket(true, new CombinedText("multiplayer.paused-dialog.description-waitingforplayer".T(), new RawText("\n" + string.Join(", ", MultiplayerCore.socketManager.Connecting.Select(c => c.Name))))), MultiplayerCore.socketManager.Connecting);
-                        new PausePacket(true, new CombinedText("multiplayer.paused-dialog.description-waitingforplayer".T(), new RawText("\n" + string.Join(", ", MultiplayerCore.socketManager.Connecting.Select(c => c.Name))))).Handle(null);
+                        MultiplayerCore.socketManager.SynchronizePauseState();
                     }
                 }
             }

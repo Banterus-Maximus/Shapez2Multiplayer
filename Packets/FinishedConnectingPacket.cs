@@ -1,6 +1,4 @@
-﻿using Core.Localization;
-using System.IO;
-using System.Linq;
+﻿using System.IO;
 
 namespace Shapez2Multiplayer.Packets
 {
@@ -39,18 +37,12 @@ namespace Shapez2Multiplayer.Packets
             // snapshots keep it repaired for the rest of the session.
             MultiplayerCore.socketManager.BroadcastResearchState();
             MultiplayerCore.socketManager.BroadcastPinState();
+            MultiplayerCore.socketManager.SynchronizePauseState();
             if (MultiplayerCore.socketManager.Connecting.Count == 0)
             {
-                MultiplayerCore.socketManager.SendToAll(new PausePacket(false));
-                new PausePacket(false).Handle(null);
                 PlacementIndicatorDataPacket.SentToAllConnections = false;
                 MultiplayerCore.socketManager.ForceUpdateCursor();
                 MultiplayerCore.socketManager.PingUpdateTimer = float.MaxValue;
-            }
-            else
-            {
-                MultiplayerCore.socketManager.SendToAllExcept(new PausePacket(true, new CombinedText("multiplayer.paused-dialog.description-waitingforplayer".T(), new RawText("\n" + string.Join(", ", MultiplayerCore.socketManager.Connecting.Select(c => c.Name))))), MultiplayerCore.socketManager.Connecting);
-                new PausePacket(true, new CombinedText("multiplayer.paused-dialog.description-waitingforplayer".T(), new RawText("\n" + string.Join(", ", MultiplayerCore.socketManager.Connecting.Select(c => c.Name))))).Handle(null);
             }
         }
     }

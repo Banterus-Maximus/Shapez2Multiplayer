@@ -35,12 +35,29 @@ namespace Shapez2Multiplayer.Packets
         public static HUDDialogSimpleInfo? Dialog;
         public void Handle(IConnection? connection, InfoConnection? routedFrom = null)
         {
-            Shapez2Multiplayer.BypassSimulationSpeedCheck = true;
-            Shapez2Multiplayer.SimulationSpeed.IsPaused = Pause;
-            Shapez2Multiplayer.BypassSimulationSpeedCheck = false;
+            var simulationSpeed = Shapez2Multiplayer.SimulationSpeed;
+            if (simulationSpeed != null)
+            {
+                Shapez2Multiplayer.BypassSimulationSpeedCheck = true;
+                try
+                {
+                    simulationSpeed.IsPaused = Pause;
+                }
+                finally
+                {
+                    Shapez2Multiplayer.BypassSimulationSpeedCheck = false;
+                }
+            }
+            else
+            {
+                // This can happen while a connecting client is still replacing its
+                // main-menu orchestrator with the host save. The host periodically
+                // repeats its pause state once the session is ready.
+                Shapez2Multiplayer.logger.Warning?.Log($"Deferred multiplayer pause state ({Pause}) because the simulation speed manager is not ready.");
+            }
             if (Pause)
             {
-                if (PauseReason != null)
+                if (PauseReason != null && Shapez2Multiplayer.DialogStack != null)
                 {
                     if (Dialog == null)
                     {
