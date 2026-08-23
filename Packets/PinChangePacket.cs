@@ -31,15 +31,33 @@ namespace Shapez2Multiplayer.Packets
 
         public void Handle(IConnection? connection, InfoConnection? routedFrom = null)
         {
-            Shapez2Multiplayer.IgnorePinEvents = true;
-            if (Remove)
+            if (connection == null)
             {
-                if (!Shapez2Multiplayer.GameSessionOrchestrator.LocalPlayer.HUDData.Pins.TryUnpin(Pin)) Shapez2Multiplayer.logger.Warning.Log("Failed To Unpin, Likely Desync");
-            } else
-            {
-                if (!Shapez2Multiplayer.GameSessionOrchestrator.LocalPlayer.HUDData.Pins.TryPin(Pin)) Shapez2Multiplayer.logger.Warning.Log("Failed To Pin, Likely Desync");
+                Shapez2Multiplayer.logger.Warning?.Log("PinChangePacket is a client request and should only be received by the host.");
+                return;
             }
-            Shapez2Multiplayer.IgnorePinEvents = false;
+
+            var previousIgnorePinEvents = Shapez2Multiplayer.IgnorePinEvents;
+            Shapez2Multiplayer.IgnorePinEvents = true;
+            try
+            {
+                if (Remove)
+                {
+                    if (!Shapez2Multiplayer.GameSessionOrchestrator.LocalPlayer.HUDData.Pins.TryUnpin(Pin)) Shapez2Multiplayer.logger.Warning?.Log("Client requested removal of a pin which was not present on the host.");
+                }
+                else
+                {
+                    if (!Shapez2Multiplayer.GameSessionOrchestrator.LocalPlayer.HUDData.Pins.TryPin(Pin)) Shapez2Multiplayer.logger.Warning?.Log("Client requested a pin which the host could not add.");
+                }
+            }
+            finally
+            {
+                Shapez2Multiplayer.IgnorePinEvents = previousIgnorePinEvents;
+            }
+
+            // Always acknowledge with the complete host state. This also rolls a
+            // client's optimistic local UI change back if the request was invalid.
+            MultiplayerCore.socketManager.BroadcastPinState();
         }
     }
 }

@@ -6,6 +6,7 @@ using Cysharp.Threading.Tasks;
 using DG.Tweening;
 using Game.Core.Coordinates;
 using Game.Core.Modding;
+using Game.Core.Research;
 using Game.HUD.QuestArea.PinnedShapes;
 using Game.Orchestration;
 using Game.Placement.Data;
@@ -352,7 +353,10 @@ namespace Shapez2Multiplayer
 #if DEBUG
             DebugLastAction = action;
 #endif
-            if ((action is LevelUpLinearUpgradePlayerAction || action is ResearchUpgradePlayerAction) && MultiplayerCore.Hosting) MultiplayerCore.socketManager.SendToAll(new SyncResearchManagerPacket(Research));
+            // Research is host-authoritative and is replicated as a complete
+            // snapshot after execution. Replaying the action on clients could
+            // apply it on top of an already-updated snapshot.
+            if ((action is LevelUpLinearUpgradePlayerAction || action is ResearchUpgradePlayerAction) && MultiplayerCore.Hosting) return;
             MultiplayerCore.SendToAll(new PlayerActionPacket(action));
         }
         [HarmonyPatch(typeof(GameOrchestrator), "UnloadCurrentState")]
@@ -393,6 +397,16 @@ namespace Shapez2Multiplayer
             __instance.ExecuteActionImmediately_INTERNAL(action, out var _);
             WaitingActions.Remove(action);
             return false;
+        }
+        [HarmonyPatch(typeof(PlayerActionManager), nameof(PlayerActionManager.ExecuteActionImmediate))]
+        [HarmonyPostfix]
+        public static void PlayerActionManagerExecuteActionImmediatePostfix(IPlayerAction action)
+        {
+            if (!MultiplayerCore.Hosting) return;
+            if (action is LevelUpLinearUpgradePlayerAction || action is ResearchUpgradePlayerAction)
+            {
+                MultiplayerCore.socketManager.BroadcastResearchState();
+            }
         }
         public static IPlayerAction? LastActionOnUndoStack;
         [HarmonyPatch(typeof(PlayerActionManager), "Undo")]
@@ -676,6 +690,35 @@ namespace Shapez2Multiplayer
         public static bool HUDPinnedShapesManagerUnpinCompletedNodesPrefix()
         {
             return !MultiplayerCore.Client;
+        }
+        [HarmonyPatch(typeof(ResearchPlayerLevelGoalManager), nameof(ResearchPlayerLevelGoalManager.TryLevelUp), new Type[] { typeof(PlayerLevelGoalId) })]
+        [HarmonyPrefix]
+        public static bool ResearchPlayerLevelGoalManagerTryLevelUpPrefix(ResearchPlayerLevelGoalManager __instance, PlayerLevelGoalId __0, ref bool __result)
+        {
+            if (!MultiplayerCore.Client || MultiplayerCore.connectionManager == null || !MultiplayerCore.connectionManager.FinishedConnecting || MultiplayerSynchronization.ApplyingAuthoritativeResearchState)
+            {
+                return true;
+            }
+
+            var expectedLevel = __instance.GetLevel(__0);
+            if (MultiplayerSynchronization.TryBeginJobRequest(__0.Id, expectedLevel))
+            {
+                MultiplayerCore.connectionManager.Send(new LevelUpPlayerLevelGoalPacket(__0, expectedLevel));
+            }
+            __result = false;
+            return false;
+        }
+        [HarmonyPatch(typeof(ResearchPlayerLevelManager), nameof(ResearchPlayerLevelManager.GrantPlayerLevel))]
+        [HarmonyPrefix]
+        public static bool ResearchPlayerLevelManagerGrantPlayerLevelPrefix()
+        {
+            // Operator-level progression is derived from vortex simulation, which
+            // is not deterministic between peers. Only the host may grant it;
+            // authoritative snapshots call this method with the apply flag set.
+            return !MultiplayerCore.Client ||
+                MultiplayerCore.connectionManager == null ||
+                !MultiplayerCore.connectionManager.FinishedConnecting ||
+                MultiplayerSynchronization.ApplyingAuthoritativeResearchState;
         }
         public static bool IgnorePinEvents = false;
         public static bool IgnoreWaypointEvents = false;

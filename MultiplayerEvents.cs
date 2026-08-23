@@ -12,12 +12,26 @@ namespace Shapez2Multiplayer
         public static void OnPinAdded(IPin pin)
         {
             if (Shapez2Multiplayer.IgnorePinEvents) return;
-            MultiplayerCore.SendToAll(new PinChangePacket(pin, false));
+            if (MultiplayerCore.Hosting)
+            {
+                MultiplayerCore.socketManager.BroadcastPinState();
+            }
+            else if (MultiplayerCore.Client)
+            {
+                MultiplayerCore.connectionManager.Send(new PinChangePacket(pin, false));
+            }
         }
         public static void OnPinRemoved(IPin pin)
         {
             if (Shapez2Multiplayer.IgnorePinEvents) return;
-            MultiplayerCore.SendToAll(new PinChangePacket(pin, true));
+            if (MultiplayerCore.Hosting)
+            {
+                MultiplayerCore.socketManager.BroadcastPinState();
+            }
+            else if (MultiplayerCore.Client)
+            {
+                MultiplayerCore.connectionManager.Send(new PinChangePacket(pin, true));
+            }
         }
         public static void OnPlacementDataChanged(IPlacementData placementData, PlacementInputHolder placementInput)
         {
@@ -35,37 +49,28 @@ namespace Shapez2Multiplayer
         public static void OnResearchLinearUpgradeManagerChanged(ResearchLinearUpgradeId researchLinearUpgradeId, int level)
         {
             if (!MultiplayerCore.Hosting) throw new Exception("OnResearchLinearUpgradeManagerChanged Should Only Be Called On Host");
-            MultiplayerCore.socketManager.SyncResearchTimer = 0.0f;
-            MultiplayerCore.socketManager.SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research));
+            MultiplayerCore.socketManager.BroadcastResearchState();
         }
         public static void OnResearchPlayerLevelManagerChanged()
         {
             if (!MultiplayerCore.Hosting) throw new Exception("OnResearchPlayerLevelManagerChanged Should Only Be Called On Host");
-            MultiplayerCore.socketManager.SyncResearchTimer = 0.0f;
-            MultiplayerCore.socketManager.SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research));
+            MultiplayerCore.socketManager.BroadcastResearchState();
         }
         public static void OnResearchPlayerLevelGoalManagerChanged()
         {
             if (!MultiplayerCore.Hosting) throw new Exception("OnResearchPlayerLevelGoalManagerChanged Should Only Be Called On Host");
-            MultiplayerCore.socketManager.SyncResearchTimer = 0.0f;
-            MultiplayerCore.socketManager.SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research));
-        }
-        public static void OnResearchPlayerLevelGoalManagerLeveledUpClient(PlayerLevelGoalId goalId, int level)
-        {
-            if (!MultiplayerCore.Client) throw new Exception("OnResearchPlayerLevelGoalManagerChanged Should Only Be Called On Client");
-            MultiplayerCore.connectionManager.Send(new LevelUpPlayerLevelGoalPacket(goalId));
+            MultiplayerCore.socketManager.BroadcastResearchState();
+            MultiplayerCore.socketManager.BroadcastPinState();
         }
         public static void OnResearchUnlockProgressManagerChanged()
         {
             if (!MultiplayerCore.Hosting) throw new Exception("OnResearchUnlockProgressManagerChanged Should Only Be Called On Host");
-            MultiplayerCore.socketManager.SyncResearchTimer = 0.0f;
-            MultiplayerCore.socketManager.SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research));
+            MultiplayerCore.socketManager.BroadcastResearchState();
         }
         public static void OnResearchUnlockManagerResearchManuallyUnlockedByPlayer(IResearchUpgrade upgrade)
         {
             if (!MultiplayerCore.Hosting) throw new Exception("OnResearchUnlockManagerResearchManuallyUnlockedByPlayer Should Only Be Called On Host");
-            MultiplayerCore.socketManager.SyncResearchTimer = 0.0f;
-            MultiplayerCore.socketManager.SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research));
+            MultiplayerCore.socketManager.BroadcastResearchState();
         }
         public static void OnPlayerInteractionStateChanged()
         {

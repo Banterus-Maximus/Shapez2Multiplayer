@@ -36,9 +36,16 @@ namespace Shapez2Multiplayer.Packets
         {
             IPlayerWaypoint? waypoint = Shapez2Multiplayer.PlayerWaypoints.Cast<IPlayerWaypoint?>().FirstOrDefault(w => w.UID == UID);
             if (waypoint == null) return;
+            var previousIgnoreWaypointEvents = Shapez2Multiplayer.IgnoreWaypointEvents;
             Shapez2Multiplayer.IgnoreWaypointEvents = true;
-            Shapez2Multiplayer.PlayerWaypoints.DeleteWaypoint(waypoint);
-            Shapez2Multiplayer.IgnoreWaypointEvents = false;
+            try
+            {
+                Shapez2Multiplayer.PlayerWaypoints.DeleteWaypoint(waypoint);
+            }
+            finally
+            {
+                Shapez2Multiplayer.IgnoreWaypointEvents = previousIgnoreWaypointEvents;
+            }
         }
     }
 }

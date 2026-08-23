@@ -14,6 +14,8 @@ namespace Shapez2Multiplayer
 {
     public static class MultiplayerCore
     {
+        public const string NetworkCompatibleModVersion = "1.2.0-local.1";
+        public const int NetworkProtocolVersion = 2;
         public static ShapezSocketManager? socketManager;
         public static ShapezConnectionManager? connectionManager;
         public static Lobby? Lobby;
@@ -281,6 +283,7 @@ namespace Shapez2Multiplayer
                 ConnectingDialog = null;
                 ChunkedPacket.ChunkedPacketCache.Clear();
                 ChunkedPacket.HostChunkedPacketCache.Clear();
+                MultiplayerSynchronization.ResetClientState();
                 Lobby?.Leave();
                 Lobby = null;
                 //if (serviceProfile != null) serviceDiscovery?.Unadvertise(serviceProfile);

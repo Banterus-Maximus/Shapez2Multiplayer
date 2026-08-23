@@ -5,30 +5,42 @@ using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 
 namespace Shapez2Multiplayer.Packets
 {
     public class SyncResearchManagerPacket : IPacket
     {
+        public ulong Revision;
         public ResearchManager.SerializedData ResearchManagerSerializedData;
         public SyncResearchManagerPacket() { }
-        public SyncResearchManagerPacket(ResearchManager.SerializedData researchManagerSerializedData)
+        public SyncResearchManagerPacket(ResearchManager.SerializedData researchManagerSerializedData, ulong revision)
         {
+            Revision = revision;
             ResearchManagerSerializedData = researchManagerSerializedData;
         }
-        public SyncResearchManagerPacket(ResearchManager researchManager)
+        public SyncResearchManagerPacket(ResearchManager researchManager, ulong revision)
         {
+            Revision = revision;
             ResearchManagerSerializedData = Encoding.SerializeResearchManager(researchManager);
         }
 
         public void Decode(Stream stream)
         {
+            using (var reader = new BinaryReader(stream, System.Text.Encoding.UTF8, true))
+            {
+                Revision = reader.ReadUInt64();
+            }
             ResearchManagerSerializedData = Encoding.DecodeResearchManagerSerializedData(stream);
         }
 
         public bool Encode(Stream stream)
         {
+            using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, true))
+            {
+                writer.Write(Revision);
+            }
             Encoding.Encode(ResearchManagerSerializedData, stream);
             return true;
         }
@@ -39,83 +51,135 @@ namespace Shapez2Multiplayer.Packets
                 Shapez2Multiplayer.logger.Warning.Log("Tried to handle SyncResearchManagerPacket on server");
                 return;
             }
+            if (!MultiplayerSynchronization.ShouldApplyResearchRevision(Revision))
+            {
+                return;
+            }
+
             var researchManager = Shapez2Multiplayer.Research;
-            foreach (var id in ResearchManagerSerializedData.ResearchProgress.UnlockedUpgradeIds)
+            if (researchManager == null)
             {
-                var upgradeId = new Game.Core.Research.ResearchUpgradeId(id);
-                if (!researchManager.Progress.IsManuallyUnlocked(upgradeId))
+                return;
+            }
+
+            MultiplayerSynchronization.ApplyingAuthoritativeResearchState = true;
+            try
+            {
+                foreach (var id in ResearchManagerSerializedData.ResearchProgress.UnlockedUpgradeIds)
                 {
-                    var upgrade = researchManager.Layout.GetUpgrade(upgradeId);
-                    researchManager.UnlockManager._OnPlayerAboutToUnlockResearch.Invoke(upgrade);
-                    researchManager.UnlockManager.TryUnlock(upgrade, true);
-                    researchManager.UnlockManager._OnResearchManuallyUnlockedByPlayer.Invoke(upgrade);
+                    var upgradeId = new Game.Core.Research.ResearchUpgradeId(id);
+                    if (!researchManager.Progress.IsManuallyUnlocked(upgradeId))
+                    {
+                        var upgrade = researchManager.Layout.GetUpgrade(upgradeId);
+                        researchManager.UnlockManager._OnPlayerAboutToUnlockResearch.Invoke(upgrade);
+                        researchManager.UnlockManager.TryUnlock(upgrade, true);
+                        researchManager.UnlockManager._OnResearchManuallyUnlockedByPlayer.Invoke(upgrade);
+                    }
                 }
-            }
-            var ShapeIdManager = researchManager.ShapeStorage.ShapeIdManager;
-            foreach (var kvp in ResearchManagerSerializedData.Shapes.StoredShapes)
-            {
-                var shapeId = ShapeIdManager.Resolve(kvp.Key);
-                var current = researchManager.ShapeStorage.GetAmount(shapeId);
-                if (current < (ulong)kvp.Value)
+
+                // Reconcile the union of host and client keys. The old code only
+                // visited keys present in the host packet, leaving a client's stale
+                // non-zero vortex totals untouched whenever the host had zero.
+                var shapeIdManager = researchManager.ShapeStorage.ShapeIdManager;
+                var localStoredShapes = researchManager.ShapeStorage.Serialize().StoredShapes;
+                var allShapeKeys = localStoredShapes.Keys
+                    .Concat(ResearchManagerSerializedData.Shapes.StoredShapes.Keys)
+                    .Distinct()
+                    .ToList();
+                foreach (var shapeKey in allShapeKeys)
                 {
-                    researchManager.ShapeStorage.Add(shapeId, (ulong)kvp.Value - current);
-                } else if (current > (ulong)kvp.Value)
-                {
-                    researchManager.ShapeStorage.TryTake(shapeId, current - (ulong)kvp.Value);
+                    var shapeId = shapeIdManager.Resolve(shapeKey);
+                    var current = researchManager.ShapeStorage.GetAmount(shapeId);
+                    var targetSerialized = ResearchManagerSerializedData.Shapes.StoredShapes.GetValueOrDefault(shapeKey, 0);
+                    if (targetSerialized < 0)
+                    {
+                        Shapez2Multiplayer.logger.Warning?.Log($"Ignored invalid negative vortex total for shape {shapeKey}.");
+                        continue;
+                    }
+                    var target = (ulong)targetSerialized;
+                    if (current < target)
+                    {
+                        researchManager.ShapeStorage.Add(shapeId, target - current);
+                    }
+                    else if (current > target && !researchManager.ShapeStorage.TryTake(shapeId, current - target))
+                    {
+                        Shapez2Multiplayer.logger.Warning?.Log($"Failed to reconcile vortex total for shape {shapeKey}.");
+                    }
                 }
-            }
-            researchManager.BlueprintCurrencyManager.SetBlueprintCurrency(ResearchManagerSerializedData.BlueprintCurrency.BlueprintCurrency);
-            researchManager.BlueprintCurrencyManager.TotalAmountSpent = ResearchManagerSerializedData.BlueprintCurrency.TotalAmountSpent;
-            if (researchManager.PointStorage.Points.Amount != ResearchManagerSerializedData.PointCurrency.Points) researchManager.PointStorage.Set(new ResearchPointCurrency(ResearchManagerSerializedData.PointCurrency.Points));
-            researchManager.PointStorage.TotalSpent = new ResearchPointCurrency(ResearchManagerSerializedData.PointCurrency.TotalSpent);
-            foreach (var kvp in ResearchManagerSerializedData.LinearUpgrades.UpgradeLevels)
-            {
-                var linearUpgradeId = new ResearchLinearUpgradeId(kvp.Key);
-                if (!researchManager.LinearUpgradeManager.Levels.TryGetValue(linearUpgradeId, out int level) || level != kvp.Value)
+
+                var allLinearUpgradeIds = researchManager.LinearUpgradeManager.Levels.Keys
+                    .Select(id => id.Id)
+                    .Concat(ResearchManagerSerializedData.LinearUpgrades.UpgradeLevels.Keys)
+                    .Distinct()
+                    .ToList();
+                foreach (var id in allLinearUpgradeIds)
                 {
-                    researchManager.LinearUpgradeManager.SetLevel(linearUpgradeId, kvp.Value);
-                    //if (researchManager.LinearUpgradeManager.TryGetUpgrade(linearUpgradeId, out var _Upgrade))
-                    //{
-                    //    Shapez2Multiplayer.PassiveEventBus.Emit<PlayerUpgradedLinearUpgradeEvent>(new PlayerUpgradedLinearUpgradeEvent(Shapez2Multiplayer.GameSessionOrchestrator.LocalPlayer, _Upgrade));
-                    //    Shapez2Multiplayer.HudEvents.ShowEpicNotification.Invoke(new HUDEpicNotificationData("research.research-linear-upgrade-improved-notification.title".T(),
-                    //    "research.research-linear-upgrade-improved-notification.description".T().Bind("name", _Upgrade.Title).Bind("level", StringFormatting.FormatGenericCount(kvp.Value + 1))));
-                    //}
+                    var linearUpgradeId = new ResearchLinearUpgradeId(id);
+                    var targetLevel = ResearchManagerSerializedData.LinearUpgrades.UpgradeLevels.GetValueOrDefault(id, 0);
+                    if (!researchManager.LinearUpgradeManager.Levels.TryGetValue(linearUpgradeId, out var currentLevel) || currentLevel != targetLevel)
+                    {
+                        researchManager.LinearUpgradeManager.SetLevel(linearUpgradeId, targetLevel);
+                    }
                 }
-            }
-            for (int i = researchManager.PlayerLevel.Level; i < ResearchManagerSerializedData.PlayerLevel.Level; i++)
-            {
-                researchManager.PlayerLevel.GrantPlayerLevel();
-            }
-            var levels = researchManager.PlayerLevelGoals.Levels;
-            var ResearchPlayerLevelGoalManagerOnLeveledUp = researchManager.PlayerLevelGoals._OnLeveledUp;
-            var ResearchPlayerLevelGoalManagerOnChanged = researchManager.PlayerLevelGoals._OnChanged;
-            foreach (var kvp in ResearchManagerSerializedData.PlayerLevelGoals.GoalLevels)
-            {
-                var levelGoalId = new PlayerLevelGoalId(kvp.Key);
-                var currentLevel = researchManager.PlayerLevelGoals.GetLevel(levelGoalId);
-                if (currentLevel < kvp.Value)
+
+                for (var level = researchManager.PlayerLevel.Level; level < ResearchManagerSerializedData.PlayerLevel.Level; level++)
                 {
-                    //for (int i = currentLevel; i < kvp.Value; i++)
-                    //{
-                    //    if (!researchManager.PlayerLevelGoals.TryLevelUp(levelGoalId))
-                    //    {
-                    //        Shapez2Multiplayer.logger.Warning.Log("Failed To Level Up, Likely Desync");
-                    //        break;
-                    //    }
-                    //    else
-                    //    {
-                    //        Shapez2Multiplayer.GameSessionOrchestratorDependencyContainer.Resolve<IUISoundPlayer>().PlayResearchUnlocked();
-                    //    }
-                    //}
+                    researchManager.PlayerLevel.GrantPlayerLevel();
+                }
+
+                var levels = researchManager.PlayerLevelGoals.Levels;
+                var goalLevelsChanged = false;
+                foreach (var localGoalId in levels.Keys
+                    .Where(id => !ResearchManagerSerializedData.PlayerLevelGoals.GoalLevels.ContainsKey(id.Id))
+                    .ToList())
+                {
+                    levels.Remove(localGoalId);
+                    goalLevelsChanged = true;
+                }
+
+                foreach (var kvp in ResearchManagerSerializedData.PlayerLevelGoals.GoalLevels)
+                {
+                    var levelGoalId = new PlayerLevelGoalId(kvp.Key);
+                    var currentLevel = researchManager.PlayerLevelGoals.GetLevel(levelGoalId);
+                    if (currentLevel == kvp.Value)
+                    {
+                        continue;
+                    }
+
                     levels[levelGoalId] = kvp.Value;
-                    ResearchPlayerLevelGoalManagerOnLeveledUp.Invoke(levelGoalId, kvp.Value);
-                    ResearchPlayerLevelGoalManagerOnChanged.Invoke();
-                    Shapez2Multiplayer.GameSessionOrchestratorDependencyContainer.Resolve<IUISoundPlayer>().PlayResearchUnlocked();
-                } else if (currentLevel > kvp.Value)
-                {
-                    levels[levelGoalId] = kvp.Value;
-                    ResearchPlayerLevelGoalManagerOnChanged.Invoke();
+                    goalLevelsChanged = true;
+                    if (currentLevel < kvp.Value)
+                    {
+                        researchManager.PlayerLevelGoals._OnLeveledUp.Invoke(levelGoalId, kvp.Value);
+                    }
                 }
+
+                if (goalLevelsChanged)
+                {
+                    researchManager.PlayerLevelGoals._OnChanged.Invoke();
+                }
+
+                // Progression events can grant currencies as a side effect. Apply
+                // these totals last so the snapshot remains authoritative instead
+                // of adding client-side rewards on top of the host balance.
+                researchManager.BlueprintCurrencyManager.SetBlueprintCurrency(ResearchManagerSerializedData.BlueprintCurrency.BlueprintCurrency);
+                researchManager.BlueprintCurrencyManager.TotalAmountSpent = ResearchManagerSerializedData.BlueprintCurrency.TotalAmountSpent;
+                if (researchManager.PointStorage.Points.Amount != ResearchManagerSerializedData.PointCurrency.Points)
+                {
+                    researchManager.PointStorage.Set(new ResearchPointCurrency(ResearchManagerSerializedData.PointCurrency.Points));
+                }
+                researchManager.PointStorage.TotalSpent = new ResearchPointCurrency(ResearchManagerSerializedData.PointCurrency.TotalSpent);
+
+                MultiplayerSynchronization.MarkResearchRevisionApplied(Revision);
+            }
+            catch (System.Exception ex)
+            {
+                Shapez2Multiplayer.logger.Warning?.Log($"Failed to apply authoritative research snapshot revision {Revision}.");
+                Shapez2Multiplayer.logger.Warning?.LogException(ex);
+            }
+            finally
+            {
+                MultiplayerSynchronization.ApplyingAuthoritativeResearchState = false;
             }
         }
     }

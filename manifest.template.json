@@ -1,7 +1,7 @@
 ﻿{
-  "Version": "1.1.9",
-  "Description": "A Multiplayer Mod For Shapez 2",
-  "Author": "Bknibb",
+  "Version": "1.2.0-local.1",
+  "Description": "Local Shapez 2 multiplayer synchronization fork",
+  "Author": "Bknibb (original); local synchronization fork",
   "AffectsSaveGames": false,
   "DisablesAchievements": false,
   "SaveGameCompabilityRange": "*",

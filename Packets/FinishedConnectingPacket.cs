@@ -6,13 +6,17 @@ namespace Shapez2Multiplayer.Packets
 {
     public class FinishedConnectingPacket : IPacket
     {
+        public int ProtocolVersion;
         public void Decode(Stream stream)
         {
-            
+            using var reader = new BinaryReader(stream);
+            ProtocolVersion = stream.Position < stream.Length ? reader.ReadInt32() : 1;
         }
 
         public bool Encode(Stream stream)
         {
+            using var writer = new BinaryWriter(stream);
+            writer.Write(MultiplayerCore.NetworkProtocolVersion);
             return true;
         }
 
@@ -23,7 +27,18 @@ namespace Shapez2Multiplayer.Packets
                 Shapez2Multiplayer.logger.Warning.Log("FinishedConnectingPacket Recieved From Host");
                 return;
             }
+            if (ProtocolVersion != MultiplayerCore.NetworkProtocolVersion)
+            {
+                Shapez2Multiplayer.logger.Warning?.Log($"Disconnected {connection.Name}: multiplayer protocol {ProtocolVersion} is incompatible with required protocol {MultiplayerCore.NetworkProtocolVersion}.");
+                MultiplayerCore.socketManager.Disconnect(connection, MultiplayerCore.DisconnectReason.Lostconnection);
+                return;
+            }
             MultiplayerCore.socketManager.Connecting.Remove(connection);
+            // The save is a point-in-time snapshot. Send the current authoritative
+            // state again after the client's load has finished, then periodic
+            // snapshots keep it repaired for the rest of the session.
+            MultiplayerCore.socketManager.BroadcastResearchState();
+            MultiplayerCore.socketManager.BroadcastPinState();
             if (MultiplayerCore.socketManager.Connecting.Count == 0)
             {
                 MultiplayerCore.socketManager.SendToAll(new PausePacket(false));

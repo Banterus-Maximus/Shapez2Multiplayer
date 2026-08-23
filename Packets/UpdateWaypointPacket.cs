@@ -52,16 +52,22 @@ namespace Shapez2Multiplayer.Packets
         public void Handle(IConnection? connection, InfoConnection? routedFrom = null)
         {
             PlayerWaypoint? modifyWaypoint = (PlayerWaypoint?)Shapez2Multiplayer.PlayerWaypoints.Waypoints.Cast<IPlayerWaypoint?>().FirstOrDefault(w => w.UID == Waypoint.UID);
-            if (modifyWaypoint == null)
+            var previousIgnoreWaypointEvents = Shapez2Multiplayer.IgnoreWaypointEvents;
+            Shapez2Multiplayer.IgnoreWaypointEvents = true;
+            try
             {
-                Shapez2Multiplayer.IgnoreWaypointEvents = true;
-                Shapez2Multiplayer.PlayerWaypoints.Add(Waypoint);
-                Shapez2Multiplayer.IgnoreWaypointEvents = false;
-            } else
+                if (modifyWaypoint == null)
+                {
+                    Shapez2Multiplayer.PlayerWaypoints.Add(Waypoint);
+                }
+                else
+                {
+                    Shapez2Multiplayer.PlayerWaypoints.ChangeWaypoint(modifyWaypoint, Waypoint.Name, Waypoint.ShapeIconKey, Waypoint);
+                }
+            }
+            finally
             {
-                Shapez2Multiplayer.IgnoreWaypointEvents = true;
-                Shapez2Multiplayer.PlayerWaypoints.ChangeWaypoint(modifyWaypoint, Waypoint.Name, Waypoint.ShapeIconKey, Waypoint);
-                Shapez2Multiplayer.IgnoreWaypointEvents = false;
+                Shapez2Multiplayer.IgnoreWaypointEvents = previousIgnoreWaypointEvents;
             }
         }
     }

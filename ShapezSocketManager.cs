@@ -146,6 +146,13 @@ namespace Shapez2Multiplayer
         {
             if (Connecting.Count > 0 && !AlwaysAllowedToSend.Contains(packet.GetType()))
             {
+                // Authoritative snapshots supersede older buffered snapshots. A
+                // slow savegame load must not produce a burst of dozens of stale
+                // one-second research packets when the session resumes.
+                if (packet is SyncResearchManagerPacket || packet is SyncPinsPacket)
+                {
+                    BufferedSendToAllPackets.RemoveAll(buffered => buffered.GetType() == packet.GetType());
+                }
                 BufferedSendToAllPackets.Add(packet);
                 return true;
             }
@@ -156,7 +163,11 @@ namespace Shapez2Multiplayer
             bool success = true;
             foreach (var connection in Connected)
             {
-                success = success && connection.Send(encoded, type);
+                // Do not short-circuit here: one failed connection must not prevent
+                // every later connection in the collection from receiving a packet.
+                var sent = connection.Send(encoded, type);
+                success = sent && success;
+                if (!sent) Shapez2Multiplayer.logger.Warning?.Log($"Dropped packet {packet.GetType().Name} to {connection.Name} because send failed");
             }
             return success;
         }
@@ -268,11 +279,18 @@ namespace Shapez2Multiplayer
         }
         public float PingUpdateTimer = 0.0f;
         public float SyncResearchTimer = 0.0f;
+        public float SyncPinsTimer = 0.0f;
+        private ulong ResearchRevision;
+        private ulong PinRevision;
         float MassSelectionsTimer = 0.0f;
         float SyncLobbyDataTimer = 0.0f;
         float SyncCursorTimer = 0.0f;
         const float PING_UPDATE_TIME = 5.0f;
-        const float SYNC_RESEARCH_TIME = 60.0f * 3f;
+        // Vortex delivery totals and research credits change without going through
+        // player actions. A short authoritative cadence keeps those simulation
+        // products converged while event-driven broadcasts handle purchases/jobs.
+        const float SYNC_RESEARCH_TIME = 1.0f;
+        const float SYNC_PINS_TIME = 5.0f;
         const float SYNC_MASS_SELECTIONS_TIME = 1.0f;
         const float SYNC_LOBBY_DATA_TIME = 60.0f * 5f;
         const float SYNC_CURSOR_TIME = 0.1f;
@@ -282,6 +300,20 @@ namespace Shapez2Multiplayer
         short? LastViewportBuildingLayer;
         bool? LastViewportShowAllBuildingLayers;
         bool? LastViewportShowAllIslandLayers;
+
+        public void BroadcastResearchState()
+        {
+            SyncResearchTimer = 0.0f;
+            if (Shapez2Multiplayer.Research == null || Connected.Count == 0) return;
+            SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research, ++ResearchRevision));
+        }
+
+        public void BroadcastPinState()
+        {
+            SyncPinsTimer = 0.0f;
+            if (Shapez2Multiplayer.GameSessionOrchestrator == null || Connected.Count == 0) return;
+            SendToAll(new SyncPinsPacket(++PinRevision));
+        }
         public void Update()
         {
             lock (_socketManagers)
@@ -300,8 +332,12 @@ namespace Shapez2Multiplayer
             SyncResearchTimer += Time.deltaTime;
             if (SyncResearchTimer >= SYNC_RESEARCH_TIME)
             {
-                SyncResearchTimer = 0.0f;
-                SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research));
+                BroadcastResearchState();
+            }
+            SyncPinsTimer += Time.deltaTime;
+            if (SyncPinsTimer >= SYNC_PINS_TIME)
+            {
+                BroadcastPinState();
             }
             MassSelectionsTimer += Time.deltaTime;
             if (MassSelectionsTimer >= SYNC_MASS_SELECTIONS_TIME)

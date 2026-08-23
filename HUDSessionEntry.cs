@@ -80,7 +80,9 @@ namespace Shapez2Multiplayer
             try
             {
                 UINameText.Text = new RawText(lobby.GetData("name") + " - " + lobby.AdditionalTitle);
-                if (!IsVerCompatible((GameVersion)int.Parse(lobby.GetData("gamever")), lobby.GetData("mode"), lobby.GetData("scenario")))
+                var isCompatible = IsVerCompatible((GameVersion)int.Parse(lobby.GetData("gamever")), lobby.GetData("mode"), lobby.GetData("scenario")) &&
+                    string.Equals(lobby.GetData("modver"), MultiplayerCore.NetworkCompatibleModVersion, StringComparison.Ordinal);
+                if (!isCompatible)
                 {
                     UIVersionMismatchOverlay.SetActiveSelfExt(true);
                 }
@@ -96,7 +98,7 @@ namespace Shapez2Multiplayer
                 GameModeId gameModeId = scenario.SupportedGameModes.First<GameModeId>();
                 GameModeDefinition gameModeDefinition = GameData.GetGameModeDefinition(gameModeId);
                 UIStatMode.Text = gameModeDefinition.Title;
-                UIBtnJoinGame.Interactable = true;
+                UIBtnJoinGame.Interactable = isCompatible;
                 DifficultyGameParameters difficultyGameParameters = new DifficultyGameParameters(new DifficultyGameParameters.SerializedData() { ResearchShapeCostMultiplier = int.Parse(lobby.GetData("difficultyresearchshapecost")), ChunkLimitMultiplier = int.Parse(lobby.GetData("difficultychunklimit")), BlueprintCostMultiplier = int.Parse(lobby.GetData("difficultyblueprintcost")) });
                 GameDifficultyPreset gameDifficultyPreset = null;
                 foreach (GameDifficultyPreset gameDifficultyPreset2 in GameData.DifficultyPresets)

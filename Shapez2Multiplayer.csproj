@@ -4,6 +4,8 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
 	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+	<UiLibAssemblyPath Condition="'$(SPZ2_UILIB_PATH)' != ''">$(SPZ2_UILIB_PATH)</UiLibAssemblyPath>
+	<UiLibAssemblyPath Condition="'$(UiLibAssemblyPath)' == ''">$(SPZ2_PERSISTENT)\mods\Shapez2UILib\Shapez2UILib.dll</UiLibAssemblyPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -179,7 +181,7 @@
 		  <Private>False</Private>
 	  </Reference>
 	  <Reference Include="Shapez2UILib">
-		  <HintPath>$(SPZ2_PERSISTENT)\mods\Shapez2UILib\Shapez2UILib.dll</HintPath>
+		  <HintPath>$(UiLibAssemblyPath)</HintPath>
 		  <Private>False</Private>
 	  </Reference>
   </ItemGroup>

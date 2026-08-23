@@ -42,8 +42,12 @@ namespace Shapez2Multiplayer.Packets
                 {
                     Shapez2Multiplayer.logger.Warning.Log("Action Failed, Likely Desync");
                     Shapez2Multiplayer.WaitingActions.Remove(PlayerAction);
-                    MultiplayerCore.socketManager.SendToAll(new SyncResearchManagerPacket(Shapez2Multiplayer.Research));
+                    MultiplayerCore.socketManager.BroadcastResearchState();
                 }
+                // Research requests use the validated scheduler exactly once. The
+                // previous fall-through scheduled the same action a second time via
+                // TryScheduleActionNoDetection, which could double-spend credits.
+                return;
             }
             if (PlayerAction is ActionModifyBuildings actionModifyBuildings)
             {

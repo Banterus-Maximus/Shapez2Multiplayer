@@ -31,6 +31,7 @@ namespace Shapez2Multiplayer
         public bool InSeperateThread = false;
         public ShapezConnectionManager(IConnectionManager connectionManager)
         {
+            MultiplayerSynchronization.ResetClientState();
             ConnectionManager = connectionManager;
             ConnectionManager.ConnectedEvent += OnConnected;
             ConnectionManager.DisconnectedEvent += OnDisconnected;
